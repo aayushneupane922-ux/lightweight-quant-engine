@@ -11,6 +11,24 @@
   sample-gated; send anything interesting to Research to validate.
 </div>
 
+{% if jobs_enabled %}
+<div class="control-panel" id="control-panel">
+  <div class="control-row">
+    <span class="control-label">Live session</span>
+    <span class="control-status" id="live-status">idle · not started</span>
+  </div>
+  <div class="control-row">
+    <label class="control-check">
+      <input type="checkbox" id="resume-check" checked>
+      Resume last session if available
+    </label>
+    <button class="ctl-btn" id="live-toggle-btn">Start Live</button>
+    <button class="ctl-btn secondary" id="ingest-btn">Ingest demo data</button>
+  </div>
+  <div class="control-row control-sub" id="ingest-status">ingest: not started</div>
+</div>
+{% endif %}
+
 <div class="grid">
   {% for m in snapshot.models %}
   <div class="cell">

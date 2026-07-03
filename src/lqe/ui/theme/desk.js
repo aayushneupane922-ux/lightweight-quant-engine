@@ -99,6 +99,102 @@
     }).then(function () { location.reload(); });
   }
 
+  // -- GUI job triggers (docs/13 M18): ingest / live start-stop. A second,
+  // separate surface from /api/control above -- these kick off a
+  // background job (JobManager) rather than flip a control flag.
+  var DEFAULT_LIVE_OUT = "runs/live-session.jsonl";
+
+  function paintJobs(rows) {
+    var byName = {};
+    rows.forEach(function (r) { byName[r.name] = r; });
+
+    var live = byName.live;
+    var liveEl = document.getElementById("live-status");
+    var toggleBtn = document.getElementById("live-toggle-btn");
+    if (live && liveEl) {
+      liveEl.textContent = live.state + " · " + live.message;
+      liveEl.className = "control-status " + (live.state === "error" ? "error" : live.state);
+    }
+    if (toggleBtn && live) {
+      var running = live.state === "running";
+      toggleBtn.textContent = running ? "Stop Live" : "Start Live";
+      toggleBtn.className = "ctl-btn" + (running ? " stop" : "");
+    }
+
+    var ingest = byName.ingest;
+    var ingestEl = document.getElementById("ingest-status");
+    if (ingest && ingestEl) {
+      ingestEl.textContent = "ingest: " + ingest.state + " · " + ingest.message;
+    }
+  }
+
+  function pollJobs() {
+    var panel = document.getElementById("control-panel");
+    if (!panel) return;
+    fetch("/api/jobs")
+      .then(function (r) { return r.json(); })
+      .then(function (rows) { if (Array.isArray(rows)) paintJobs(rows); })
+      .catch(function () { /* transient -- next poll will retry */ });
+  }
+
+  function startOrStopLive() {
+    var btn = document.getElementById("live-toggle-btn");
+    var resuming = btn && btn.textContent.indexOf("Stop") !== -1;
+    if (resuming) {
+      fetch("/api/jobs/live/stop", { method: "POST" }).then(pollJobs);
+      return;
+    }
+    var resumeChecked = document.getElementById("resume-check");
+    var body = {
+      adapter: "ccxt", exchange: "binance", symbol: "BTC-USDT", timeframe: "1m",
+      poll_seconds: 60, lookback_bars: 300, starting_cash: 10000,
+      autonomy_every: 5, n_trials: 8, min_periods: 200, use_llm: false,
+    };
+    if (resumeChecked && resumeChecked.checked) body.out_path = DEFAULT_LIVE_OUT;
+    fetch("/api/jobs/live/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(pollJobs);
+  }
+
+  function startIngest() {
+    fetch("/api/jobs/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        adapter: "ccxt", exchange: "binance", symbol: "BTC-USDT", timeframe: "1m",
+        root: "data",
+      }),
+    }).then(pollJobs);
+  }
+
+  function pollBacktest() {
+    var panel = document.getElementById("backtest-panel");
+    if (!panel) return;
+    fetch("/api/jobs")
+      .then(function (r) { return r.json(); })
+      .then(function (rows) {
+        var row = rows.filter(function (r) { return r.name === "backtest"; })[0];
+        var el = document.getElementById("backtest-status");
+        if (row && el) el.textContent = "backtest: " + row.state + " · " + row.message;
+      })
+      .catch(function () { /* transient -- next poll will retry */ });
+  }
+
+  function startBacktest() {
+    var bundle = document.getElementById("bt-bundle");
+    var symbol = document.getElementById("bt-symbol");
+    fetch("/api/jobs/backtest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        root: "data", bundle: bundle ? bundle.value : "",
+        symbol: symbol ? symbol.value : "BTC-USDT",
+      }),
+    }).then(pollBacktest);
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var kill = document.getElementById("kill-btn");
     if (kill) {
@@ -112,6 +208,20 @@
         // toggling OFF is "take the wheel"; ON engages autonomous management
         autopilot(ap.classList.contains("on") ? "AUTOPILOT_OFF" : "AUTOPILOT_ON");
       });
+    }
+    var liveBtn = document.getElementById("live-toggle-btn");
+    if (liveBtn) liveBtn.addEventListener("click", startOrStopLive);
+    var ingestBtn = document.getElementById("ingest-btn");
+    if (ingestBtn) ingestBtn.addEventListener("click", startIngest);
+    if (document.getElementById("control-panel")) {
+      pollJobs();
+      setInterval(pollJobs, 2000);
+    }
+    var backtestBtn = document.getElementById("backtest-btn");
+    if (backtestBtn) backtestBtn.addEventListener("click", startBacktest);
+    if (document.getElementById("backtest-panel")) {
+      pollBacktest();
+      setInterval(pollBacktest, 2000);
     }
     // keyboard-first mode switching (F1..F6 -> nav hrefs)
     document.addEventListener("keydown", function (e) {

@@ -21,38 +21,71 @@ institutional-terminal/blotter UX research, and 2026 agent-UX research
 
 ---
 
-## M18 — Zero-CLI, one-click launch  · M · Dep: v2.0
+## M18 — Zero-CLI, one-click launch  · M · Dep: v2.0  ✅ `m18-done`
 **Goal:** the user double-clicks one thing; everything the CLI used to do
 happens automatically, and they land on a ready dashboard. No terminal,
 ever.
 
-- [ ] **Single entry point** (double-clickable per OS: `.command`/`.bat`, or
-  a pywebview/PyTauri desktop app). It: (a) ensures the environment/deps
-  (bundle them, or run a one-time setup with a visible progress screen), (b)
-  runs `lqe doctor` + first-run setup (auto-ingest a small default dataset
-  if none exists), (c) starts the FastAPI server on `127.0.0.1`, (d) opens
-  the browser (or a native window) to the dashboard.
-- [ ] **Friendly onboarding/status screen** during startup — plain-language
-  progress ("Preparing data… Starting engine… Opening dashboard"), not a
-  terminal, not raw stdout. Errors are designed states ("Couldn't reach the
-  exchange — retrying"), never stack traces.
-- [ ] **Move every operation into the GUI** via the *existing whitelisted
-  control path*: ingest, backtest, start/stop live, autopilot on/off,
-  resume. These are buttons that trigger the same gated actions in a
-  background worker — **they add no new capability and construct no
-  `Order`.**
-- [ ] **Session control:** persist last session (M15 already resumes
-  state); offer a visible "Resume last session?" choice on launch. Never
-  auto-start anything surprising — land on a ready dashboard with an
-  obvious **Start** control.
-- [ ] Keep it fully **offline/local** — no CDN, no network calls except
-  ccxt public + optional local Ollama.
-- **Tests:** with no prior setup, launch → ready dashboard; every former
-  CLI op is reachable from the GUI; the new buttons construct no `Order`
-  (extend `tests/safety`); bound to `127.0.0.1` only; onboarding renders
-  status, never raw stdout.
-- **Exit gate:** a non-technical user goes double-click → live dashboard
-  with zero terminal use; safety tests green. `git tag m18-done`.
+- [x] **Single entry point** (`run.py`, rewritten): builds a `KillSwitch` +
+  `ControlPlane` + `DeskData` + `JobManager`, starts the FastAPI server on
+  `127.0.0.1` in a background thread immediately, runs first-run setup in a
+  second background thread (auto-ingests a small offline synthetic demo
+  dataset via the same `JobManager.start_ingest` path the GUI's own
+  "Ingest demo data" button uses, if `data/catalog.duckdb` doesn't exist
+  yet), then opens the browser (or a native `pywebview` window with
+  `--window`) once ready. A full desktop-installer/bundled-deps path
+  (PyTauri) was judged out of scope for this milestone — `run.py` still
+  requires a working `.venv`, same as `lqe doctor`/M12's launcher; noted as
+  a real gap below, not silently assumed done.
+- [x] **Friendly onboarding/status screen**: new `LaunchState` (`ops/jobs.py`)
+  + a FastAPI middleware in `ui/app.py` that serves `onboarding.html`
+  (plain-language message, auto-polling `/api/launch-status`, no raw
+  stdout/stack trace ever rendered) for every route until setup finishes,
+  then transparently lets the real dashboard through — verified live (both
+  a fresh first-run and an already-set-up run) and in
+  `tests/safety/test_onboarding_gate.py` (6 tests).
+- [x] **Every operation reachable from the GUI**: new `ops/jobs.JobManager`
+  runs ingest/backtest/live-start/live-stop in background threads, calling
+  the *exact same* already-tested functions the CLI uses
+  (`data.ingest.ingest`, `backtest.runner.run_backtest`, the extracted
+  `live.session.LiveSession` — see below) — no new order-construction path.
+  New `/api/jobs*` routes (a second write surface from `/api/control`,
+  clearly labeled as such) + a Live Control panel on Floor (Start/Stop
+  Live, resume checkbox, Ingest demo data) + a Quick Backtest panel on
+  Research (explicitly labeled as *not* the validation gate, to avoid
+  implying it validates anything). Autopilot on/off was already
+  GUI-reachable since M9 — untouched.
+- [x] **`live/session.py` (`LiveSession`, new)**: extracted `cli._cmd_live`'s
+  session logic (seed/resume, fleet/engine/orchestrator wiring, per-bar
+  processing) into a reusable class so the CLI and `JobManager` share one
+  implementation, not two that could silently drift. Re-verified byte-for-
+  byte against the pre-extraction behavior: all of M14/M15's existing
+  `lqe live` tests (including the M15 byte-identical-resume test) still
+  pass unchanged after the refactor.
+- [x] **Session control**: a "Resume last session if available" checkbox
+  (checked by default) on the Live Control panel includes a conventional
+  `--out`-equivalent path in the start request when checked, so clicking
+  Start Live either begins fresh or resumes (M15's existing mechanism) —
+  visibly reported back in the status message either way. Nothing
+  auto-starts; the human must click Start.
+- [x] Fully **offline/local**: the launcher's own first-run demo-ingest uses
+  a synthetic CSV fixture (no network); `lqe live`'s real-data path is
+  unchanged (ccxt public + optional local Ollama, as before).
+- **Tests:** ✅ `tests/unit/test_ops_jobs.py` (10 tests: JobManager
+  ingest/backtest/live start-stop against an offline CSV fixture) ·
+  `tests/integration/test_ui_jobs_routes.py` (7 tests: the HTTP surface via
+  `TestClient`, including that control panels render only when
+  `jobs_enabled` and are absent otherwise) · `tests/safety/
+  test_onboarding_gate.py` (6 tests) · `tests/integration/
+  test_run_launcher.py` (4 tests: `_seed_demo_csv`/`_first_run_setup`,
+  including the fast-path when a catalog already exists) · full existing
+  `lqe live` suite unchanged and green post-extraction · **verified live**
+  against a real running server (not just TestClient): first-run auto-
+  ingest completed, the Floor page rendered the control panel, a real HTTP
+  `POST /api/jobs/live/start` (offline CSV adapter) brought up all 51
+  models trading, and `POST /api/jobs/live/stop` cleanly halted it.
+- **Exit gate:** ✅ full suite green (336 passed, 8 correctly skipped) +
+  ruff + mypy + license gate green; `git tag m18-done`.
 
 ## M19 — Institutional UI/UX polish (Obsidian Desk, applied)  · L · Dep: M18
 **Goal:** it doesn't just work — it looks like a Goldman/Bloomberg-grade

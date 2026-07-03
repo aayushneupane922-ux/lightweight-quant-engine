@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBSIDIAN DESK — Starting up</title>
+<link rel="stylesheet" href="/theme/desk.css">
+<style>
+  .onboard { display:flex; align-items:center; justify-content:center; height:100vh; }
+  .onboard-card { background:var(--slab); border:1px solid var(--ridge); border-radius:6px;
+    padding:36px 44px; text-align:center; max-width:420px; }
+  .onboard-brand { font-weight:600; letter-spacing:.14em; font-size:13px; margin-bottom:22px; }
+  .onboard-brand b { color:var(--amber); }
+  .onboard-spinner { width:28px; height:28px; margin:0 auto 18px; border-radius:50%;
+    border:2px solid var(--ridge); border-top-color:var(--amber);
+    animation:onboard-spin 0.9s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .onboard-spinner { animation:none; } }
+  @keyframes onboard-spin { to { transform:rotate(360deg); } }
+  .onboard-msg { color:var(--ink); font-size:14px; }
+  .onboard-sub { color:var(--mute); font-size:11px; margin-top:10px; letter-spacing:.02em; }
+</style>
+</head>
+<body>
+<div class="onboard">
+  <div class="onboard-card">
+    <div class="onboard-brand">OBSIDIAN <b>DESK</b></div>
+    <div class="onboard-spinner" role="status" aria-live="polite"></div>
+    <div class="onboard-msg" id="onboard-msg">{{ message }}</div>
+    <div class="onboard-sub">Paper-only · local · nothing runs until you say so</div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  function poll() {
+    fetch("/api/launch-status")
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        var el = document.getElementById("onboard-msg");
+        if (el && s.message) el.textContent = s.message;
+        if (s.ready) { location.reload(); return; }
+        setTimeout(poll, 800);
+      })
+      .catch(function () { setTimeout(poll, 1500); });
+  }
+  poll();
+})();
+</script>
+</body>
+</html>

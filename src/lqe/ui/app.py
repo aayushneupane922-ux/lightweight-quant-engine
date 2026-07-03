@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -23,6 +23,12 @@ from fastapi.templating import Jinja2Templates
 
 from lqe.live.control import Command
 from lqe.ui.data import DeskData
+
+if TYPE_CHECKING:
+    # docs/13 M18: only used for the type hint below -- see ui/data.py's
+    # identical note on why importing `lqe.ops.jobs` here doesn't cross the
+    # ui-boundary safety test (it isn't risk/execution/autonomy/models).
+    from lqe.ops.jobs import LaunchState
 
 # Hard invariant (GUARDRAILS.md, docs/11 §11.11): localhost only. There is
 # no config knob to change this — binding anywhere else would expose an
@@ -53,11 +59,36 @@ _NAV = [
 ]
 
 
-def create_app(data: DeskData) -> FastAPI:
+def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> FastAPI:
     app = FastAPI(title="Obsidian Desk", docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(directory=str(_TEMPLATES))
     app.mount("/theme", StaticFiles(directory=str(_THEME)), name="theme")
     app.mount("/viz3d", StaticFiles(directory=str(_VIZ3D)), name="viz3d")
+
+    # docs/13 M18: while first-run setup (auto-ingest, doctor checks) is
+    # still in progress, every page request gets the onboarding screen
+    # instead -- a plain-language status page, never raw stdout, never a
+    # stack trace. `/api/launch-status` is exempt so the onboarding page's
+    # own poll can ask "are we ready yet?"; static theme/viz3d assets are
+    # exempt so the onboarding page itself can render styled.
+    _EXEMPT_PREFIXES = ("/api/launch-status", "/theme", "/viz3d")
+
+    @app.middleware("http")
+    async def _onboarding_gate(request: Request, call_next):  # type: ignore[no-untyped-def]
+        blocked = launch_state is not None and not launch_state.ready
+        if blocked and not request.url.path.startswith(_EXEMPT_PREFIXES):
+            assert launch_state is not None  # narrowed by `blocked` above, for mypy
+            return templates.TemplateResponse(
+                request, "onboarding.html",
+                {"request": request, "message": launch_state.message},
+            )
+        return await call_next(request)
+
+    @app.get("/api/launch-status")
+    def api_launch_status() -> JSONResponse:
+        if launch_state is None:
+            return JSONResponse({"ready": True, "message": "ready"})
+        return JSONResponse({"ready": launch_state.ready, "message": launch_state.message})
 
     def _ctx(request: Request, active: str, **extra: Any) -> dict[str, Any]:
         return {
@@ -67,6 +98,7 @@ def create_app(data: DeskData) -> FastAPI:
             "snapshot": data.snapshot(),
             "kill_active": data.kill_active,
             "autopilot_on": data.autopilot_on,
+            "jobs_enabled": data.jobs is not None,
             **extra,
         }
 
@@ -146,6 +178,93 @@ def create_app(data: DeskData) -> FastAPI:
             return JSONResponse({"error": f"unknown command {command!r}"}, status_code=400)
         return JSONResponse({"kill_active": data.kill_active})
 
+    # --- GUI job triggers (docs/13 M18) -----------------------------------
+    # A second, separate write surface from /api/control above: these
+    # trigger long-running operations (ingest/backtest/live start-stop) in
+    # a background thread via `JobManager` rather than flipping a control
+    # flag. Every op it calls is the same already-tested function the CLI
+    # uses (data.ingest.ingest, backtest.runner.run_backtest,
+    # live.session.LiveSession) -- no new Order-construction path. All
+    # return 404 if the caller (e.g. `lqe desk`'s read-only render path)
+    # never enabled jobs.
+
+    @app.get("/api/jobs")
+    def api_jobs() -> JSONResponse:
+        if data.jobs is None:
+            return JSONResponse({"error": "jobs not enabled on this session"}, status_code=404)
+        return JSONResponse(
+            [
+                {
+                    "name": s.name, "state": s.state, "message": s.message,
+                    "updated_at": s.updated_at.isoformat(),
+                }
+                for s in data.jobs.statuses()
+            ]
+        )
+
+    @app.post("/api/jobs/ingest")
+    async def api_jobs_ingest(request: Request) -> JSONResponse:
+        if data.jobs is None:
+            return JSONResponse({"error": "jobs not enabled on this session"}, status_code=404)
+        body = await request.json()
+        started = data.jobs.start_ingest(
+            adapter=str(body.get("adapter", "ccxt")),
+            exchange=str(body.get("exchange", "binance")),
+            symbol=str(body.get("symbol", "BTC-USDT")),
+            timeframe=str(body.get("timeframe", "1m")),  # type: ignore[arg-type]
+            # ^ raw JSON body input; JobManager wraps the whole job in
+            # try/except, so an invalid value surfaces as a job "error"
+            # status, not a crash -- no need to hand-validate against the
+            # Literal here.
+            root=str(body.get("root", "data")),
+            csv_path=body.get("csv_path"),
+        )
+        return JSONResponse({"started": started})
+
+    @app.post("/api/jobs/backtest")
+    async def api_jobs_backtest(request: Request) -> JSONResponse:
+        if data.jobs is None:
+            return JSONResponse({"error": "jobs not enabled on this session"}, status_code=404)
+        body = await request.json()
+        started = data.jobs.start_backtest(
+            root=str(body.get("root", "data")),
+            bundle=str(body.get("bundle", "")),
+            symbol=str(body.get("symbol", "BTC-USDT")),
+            fast=int(body.get("fast", 12)),
+            slow=int(body.get("slow", 48)),
+            starting_cash=float(body.get("starting_cash", 10_000.0)),
+        )
+        return JSONResponse({"started": started})
+
+    @app.post("/api/jobs/live/start")
+    async def api_jobs_live_start(request: Request) -> JSONResponse:
+        if data.jobs is None:
+            return JSONResponse({"error": "jobs not enabled on this session"}, status_code=404)
+        body = await request.json()
+        started = data.jobs.start_live(
+            adapter=str(body.get("adapter", "ccxt")),
+            exchange=str(body.get("exchange", "binance")),
+            csv_path=body.get("csv_path"),
+            symbol=str(body.get("symbol", "BTC-USDT")),
+            timeframe=str(body.get("timeframe", "1m")),  # type: ignore[arg-type]
+            poll_seconds=float(body.get("poll_seconds", 60.0)),
+            lookback_bars=int(body.get("lookback_bars", 300)),
+            starting_cash=float(body.get("starting_cash", 10_000.0)),
+            autonomy_every=int(body.get("autonomy_every", 5)),
+            n_trials=int(body.get("n_trials", 8)),
+            min_periods=int(body.get("min_periods", 200)),
+            use_llm=bool(body.get("use_llm", False)),
+            llm_model=str(body.get("llm_model", "llama3.2:3b")),
+            out_path=body.get("out_path"),
+        )
+        return JSONResponse({"started": started})
+
+    @app.post("/api/jobs/live/stop")
+    def api_jobs_live_stop() -> JSONResponse:
+        if data.jobs is None:
+            return JSONResponse({"error": "jobs not enabled on this session"}, status_code=404)
+        return JSONResponse({"stopped": data.jobs.stop_live()})
+
     # --- live push -------------------------------------------------------
 
     @app.websocket("/ws")
@@ -172,12 +291,17 @@ def create_app(data: DeskData) -> FastAPI:
     return app
 
 
-def serve(data: DeskData, *, port: int = DEFAULT_PORT) -> None:  # pragma: no cover - real server
+def serve(
+    data: DeskData, *, port: int = DEFAULT_PORT, launch_state: LaunchState | None = None
+) -> None:  # pragma: no cover - real server
     """Blocking run on 127.0.0.1 only. Imported lazily so a base install
     without the `ui` extra can still import the rest of `lqe`."""
     import uvicorn
 
-    uvicorn.run(create_app(data), host=BIND_HOST, port=port, log_level="warning")
+    uvicorn.run(
+        create_app(data, launch_state=launch_state), host=BIND_HOST, port=port,
+        log_level="warning",
+    )
 
 
 __all__ = ["BIND_HOST", "DEFAULT_PORT", "Command", "create_app", "serve"]

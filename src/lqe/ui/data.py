@@ -11,7 +11,7 @@ and `simulated` is always true on the snapshot.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -23,6 +23,14 @@ from lqe.storage.state_reader import (
     TapeRow,
     UIState,
 )
+
+if TYPE_CHECKING:
+    # docs/13 M18: the GUI job-trigger surface. Only imported for the type
+    # hint below -- `ops.jobs` isn't in the ui-boundary test's forbidden
+    # list (risk/execution/autonomy/models), so a real (non-TYPE_CHECKING)
+    # import would also be allowed, but this keeps the module import-light
+    # for callers that never construct a JobManager (e.g. `lqe desk`).
+    from lqe.ops.jobs import JobManager
 
 _FROZEN = ConfigDict(frozen=True)
 
@@ -84,12 +92,23 @@ class DeskData:
         catalog_rows: list[CatalogRow] | None = None,
         experiment_rows: list[ExperimentRow] | None = None,
         daily_rows: list[DailyRow] | None = None,
+        jobs: JobManager | None = None,
     ) -> None:
         self._state_reader = state_reader
         self._control = control
         self._catalog_rows = catalog_rows or []
         self._experiment_rows = experiment_rows or []
         self._daily_rows = daily_rows or []
+        # docs/13 M18: optional GUI job-trigger surface (ingest/backtest/
+        # live start-stop). None for `lqe desk`'s read-only render path,
+        # which never needs it.
+        self.jobs = jobs
+
+    def set_catalog_rows(self, catalog_rows: list[CatalogRow]) -> None:
+        """Swap the Catalog view's rows (docs/13 M18: a GUI-started live
+        session rebuilds the catalog once at setup and hands it here) --
+        same atomic-attribute-swap reasoning as `set_state_reader`."""
+        self._catalog_rows = catalog_rows
 
     def set_state_reader(self, state_reader: StateReader) -> None:
         """Swap the read-side snapshot (post-v1.0 live-refresh extension): a

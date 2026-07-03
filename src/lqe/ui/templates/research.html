@@ -11,6 +11,21 @@
   cost survival + beats equal-weight/random. Every number below carries its sample size.
 </div>
 
+{% if jobs_enabled %}
+<div class="control-panel" id="backtest-panel">
+  <div class="control-row">
+    <span class="control-label">Quick backtest</span>
+    <span class="control-sub">(a single deterministic pass — not the validation gate above)</span>
+  </div>
+  <div class="control-row">
+    <input type="text" id="bt-bundle" placeholder="replay bundle id" class="ctl-input">
+    <input type="text" id="bt-symbol" placeholder="symbol" value="BTC-USDT" class="ctl-input">
+    <button class="ctl-btn" id="backtest-btn">Run Backtest</button>
+  </div>
+  <div class="control-row control-sub" id="backtest-status">backtest: not started</div>
+</div>
+{% endif %}
+
 <table class="data">
   <thead>
     <tr>

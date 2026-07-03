@@ -12,13 +12,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install project (dev)
-        run: pip install -e ".[dev]"
+      # Install the runtime extras that are *promoted into the product*
+      # (ui @ M7, search @ M8) plus dev tooling. Deliberately NOT `models`:
+      # the heavy-lib adapter tests assert those quarantine cleanly when
+      # absent, so installing them would break tests/unit/test_heavy_lib_*.
+      - name: Install project (promoted runtime + dev)
+        run: pip install -e ".[ui,search,dev]"
       - name: ruff
         run: ruff check .
       - name: mypy
         run: mypy src
       - name: pytest
         run: pytest
-      - name: license gate (runtime deps only)
+      - name: license gate (full runtime transitive closure)
         run: python scripts/license_gate.py

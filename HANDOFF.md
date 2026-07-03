@@ -1,70 +1,76 @@
 # HANDOFF — `lightweight-quant-engine`
 
-**Purpose of this file:** orient a developer (human or a fresh Claude Code session) who is picking up this project cold. Read this first, then `GETTING-STARTED.md`, then `CLAUDE.md`.
+**Purpose:** orient a developer (human or a fresh Claude Code session) picking this up cold. Read this, then `CLAUDE.md` (constitution) + `GUARDRAILS.md` + `WORKFLOW.md`, then `docs/10-production-roadmap.md` (the milestone map, kept checked-off as work lands).
 
-## 1. What you're inheriting
-A complete **research and implementation-planning package** for a lightweight, local-first, **paper-trading-only** quant engine. This is a *master plan*, not code. Your job is to implement it, milestone by milestone, without inventing new architecture.
+## 1. Status (as of M11 complete)
 
-- **Status:** design complete; **zero product code written yet**.
-- **First deliverable:** Milestone 1 (deterministic core + structural live-trading lockout).
-- **No live trading, no credentials, no Sierra/DTC** — see the absolute rules in `CLAUDE.md`.
+A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M11 are complete, verified, committed, and tagged; M12 (hardening + release → v1.0) is the only milestone left.**
 
-## 2. Confirmed product constraints (already decided — do not re-litigate)
-- **Crypto-first, asset-agnostic core** — validate on free crypto public data; equities/futures plug in later via adapters.
-- **Local app in a desktop window** — NiceGUI on localhost, later wrapped to a Windows `.exe`. Not a web SaaS.
-- **$0/month** for data/compute/UI — only cost is the Claude Code subscription.
-- **Paper trading only.** Deterministic strategies only. No autonomous LLM/RL decisions.
+- **Tags:** `m0-done` … `m11-done`, plus `v0.1`. (v0.2/v0.3/v0.4 were marked "shippable" in the roadmap at m7/m9/m10 but only the milestone tags were cut; `v0.1` was tagged on explicit request.)
+- **Health:** **273 tests pass** · `ruff` clean · `mypy --strict` clean · license gate PASS · git tree clean.
+- **Branch:** `master`. Every milestone = one commit + a `mN-done` tag. Git identity is a local placeholder (set per-repo, flagged to the owner).
 
-Full rationale for every decision: `docs/20-final-decision-log.md`.
+### Verify everything in one shot (Windows, from repo root)
+```
+./.venv/Scripts/pytest.exe -q
+./.venv/Scripts/ruff.exe check .
+./.venv/Scripts/mypy.exe src scripts tests      # CI runs `mypy src` only
+./.venv/Scripts/python.exe scripts/license_gate.py
+```
+CI (`.github/workflows/ci.yml`) installs `.[ui,search,dev]` — **not** `.[models]` (the heavy-lib quarantine tests require those absent).
 
-## 3. Document map (what's in the box)
-The `docs/` folder has 24 numbered files + a README. Grouped:
+## 2. What's built (milestone by milestone)
 
-- **Orient / decide:** `00` executive summary · `05` recommended architecture · `20` decision log · `21` red-team review.
-- **Money:** `06` cost analysis · `07` free/low-cost plan.
-- **Safety-critical specs:** `10` paper-trading engine · `11` risk engine · `14` safety/compliance · `15` license review.
-- **Reference specs:** `08` data strategy · `12` event & storage schema · `13` UI spec.
-- **Research discipline:** `09` backtesting protocol — **read before writing any strategy**; it's the real product.
-- **Evaluations:** `02` framework matrix · `03` model taxonomy · `04` architecture options.
-- **Build package:** `16` MVP build plan · `17` master prompt · `18` milestone prompts · `19` review prompts.
-- **Open items:** `22` unanswered questions + top-20 risks · `23` source map · `01` research method.
+- **M0** — repo scaffold, `pyproject.toml`, venv, ruff/mypy/pytest config, `scripts/license_gate.py`, CI.
+- **M1** — deterministic core: hash-chained `AuditLog`/`Engine`, `Clock`/`ReplayClock`/`WallclockClock`/`ManualClock`, frozen event payloads (`core/events.py`), `make_order` (the sole `Order` constructor), config lockout (`mode: live` rejected), `LIVE_TRADING_ENABLED=False`.
+- **M2** — data: ccxt adapter (public only, no order methods), CSV replay, OHLCV validation (§8.4 checks), Parquet + DuckDB catalog, replay bundles, `lqe ingest`.
+- **M3** — runtime: `Strategy` protocol + `trend_ma_cross`, `PaperBroker` (`is_paper=True`), fills/slippage/commission, `Accounting` (Decimal, multi-symbol), sizing, `Session`/`make_session`, `lqe backtest`.
+- **M4** — the gate: `analytics/metrics|dsr|pbo` (self-contained numpy), `ExperimentRegistry`, `autonomy/validator` (walk-forward + cost sweep + benchmarks), `autonomy/promotion_gate` (sole `GateResult` constructor), tearsheet, `lqe validate`. Tagged `v0.1`.
+- **M5** — risk: `risk/rules` (12 MVP rules), `risk/model`, disk-backed human `KillSwitch`, reconciliation + rebuild-from-audit, de-risk controller; risk gate wired into `Session`.
+- **M6** — catalog: `ModelManifest`, `ModelCatalog` + intake/quarantine, **native numpy indicators** + `IndicatorRuleAdapter` (9 presets), 11 models across 4 families, 5 heavy-lib structural adapters (lazy-imported).
+- **M7** — UI: FastAPI + Jinja2 + native WebSocket on `127.0.0.1`, Obsidian Desk theme, Floor/Catalog/Research/Risk/Daily views, structured Tape, `StateReader` (read-only), `live/control.ControlPlane` (whitelisted `ControlEvent`s), `lqe desk`.
+- **M8** — autonomy loop: `OptunaOptimizer` (seeded), native `DriftMonitor`, `TrackedBook` (gate-guarded), rule-based `Orchestrator` (OBSERVE→…→NARRATE, deterministic, audited), `lqe autopilot`. Trial provenance persists (`--catalog`) and spans campaigns.
+- **M9** — autopilot + LLM: `autonomy/tools` (5 structured tool calls + fail-closed parser), `autonomy/narrator` (rule-based default + optional Ollama via stdlib, graceful fallback), `LlmCallEvent` provenance, UI autopilot toggle + Intel decision cards + take-the-wheel.
+- **M10** — 3D neural-web: `StateReader.graph(at_seq)` (`GraphPayload`, deterministic timeline replay), `viz3d/neural_web.js` (dependency-free canvas force-graph), `/engine` view + `/api/graph`.
+- **M11** — scale: `models/catalog_scale.py` (**51 models** via presets × param grids + heavy adapters), 3 more adapters (HMM/change-point/supervised), `reconcile_basket` (multi-instrument), `portfolio/universe.py` (survivorship-safe), `lqe catalog`.
 
-## 4. The build path (10 milestones)
-1. Local-only core engine (+ live lockout) ← **start here**
-2. Data ingestion & validation (crypto → Parquet/DuckDB)
-3. Backtesting / replay (+ paper broker & fills)
-4. Research analytics (QuantStats + experiment registry)
-5. Paper broker hardening (risk gate, kill switch, reconciliation)
-6. Lightweight UI (NiceGUI)
-7. Model-library integration (behind interface)
-8. Paper-trading daemon (wall-clock, kill switch, daily report)
-9. Safety & audit review (lockout/risk/parity tests + license CI gate)
-10. Future adapter spike (guarded stubs; **no Sierra research**)
+## 3. Key deviations from the named spec (all deliberate + flagged)
 
-Exact, copy-pasteable prompts for each: `docs/18-claude-code-milestone-prompts.md`.
+The spec names some tools that were replaced for a good reason — same "own the spine / don't add a dep you can't vet or obtain" ethos each time:
 
-**Recommended first release (thin slice):** Milestones 1 → 3 → 6 (core → backtest → minimal UI), then fill in 4/5/7/8. This de-risks "never shipping."
+| Spec named | Shipped instead | Why |
+|---|---|---|
+| pandas-ta (M6 indicators) | native numpy indicators | pandas-ta hard-requires tqdm (was read as MPL-2.0-bulk under the *old* strict license policy) |
+| NiceGUI (M7 UI) | FastAPI + Jinja2 + Starlette WS | NiceGUI pulls `docutils`/`bidict`/`orjson` — ambiguous/MPL licenses, unvendorable |
+| River (M8 drift) | native deterministic `DriftMonitor` | determinism hard-rail + no scipy in the runtime closure |
+| Ollama python client (M9) | stdlib `urllib` to the local Ollama HTTP API | no new dependency, loopback-only, graceful fallback |
+| three.js / 3d-force-graph (M10) | dependency-free `<canvas>` force-graph | not vendorable offline/no-CDN; meets the acceptance criteria; `viz3d/vendor/` slot documented |
 
-## 5. The non-negotiable safety gates (must hold at every milestone)
-1. `execution_adapter.is_paper is True` asserted at startup.
-2. Config schema has **no** live/real-broker values.
-3. No broker SDK import; no `ccxt` order-creation call anywhere.
-4. Only one function constructs `Order`, after the risk gate.
-5. Kill switch reachable and effective; never auto-clears.
-6. Every order intent audited; audit hash-chain verifies.
-7. Deterministic replay equality holds.
-8. License CI gate green (no GPL/Commons-Clause in runtime).
+**License policy was corrected mid-build** (the owner supplied updated `GUARDRAILS.md` + `docs/11` §11.11): now **tiered, transitive, fail-closed** — MPL-2.0 is ALLOW (so `certifi`, tqdm are fine); `scripts/license_gate.py` walks the full runtime closure of the *promoted* extras (`ui`, `search`) and fails closed on unknowns. `THIRD_PARTY_NOTICES.md` is generated by `scripts/generate_third_party_notices.py`.
 
-Run `docs/19-claude-code-review-prompts.md` §19.1 (safety review) after every milestone and before any merge touching `risk/`, `execution/`, or `paper/`.
+## 4. Architecture invariants (never break — enforced by `tests/safety`)
 
-## 6. What NOT to build (guardrails)
-Live broker/credentials · Sierra/DTC anything · cloud/multi-user/remote UI/auth · RL/LLM decision models · options/order-book/HFT · cross-sectional factor universes · portfolio-optimization layer (MVP sizing = fixed-fractional/vol-target) · React front end. Full list: `docs/16 §16.7`.
+- **Paper-only:** no real-order call sites anywhere; `PaperBroker` is the only `ExecutionAdapter`; `assert_paper_only` runs in `Session.__init__`; config `Literal`s reject `live`.
+- **Single choke points:** `make_order` is the only `Order` constructor; `PromotionGate` is the only `GateResult` constructor (both AST-enforced). `TrackedBook.promote` re-checks the PASS verdict.
+- **Kill switch:** human-owned, disk-persisted, never auto-clears; clearing needs a named operator; the LLM/autonomy can never clear it or place/size an order (the tool vocabulary has no such tool — fail-closed parser).
+- **Determinism:** identical inputs+seed → identical audit hashes; sessions + the autonomy loop replay from the log; `ManualClock` drives the orchestrator's `sim_ts`.
+- **Layering (docs/11 §11.1, `tests/safety/test_module_layering.py`):** `core` imports nothing project-specific; `storage` never imports `data` (their only cross is `data.ingest → storage`); `ui` imports only `storage.state_reader` + `live.control` + `core` (plus the `ui/builder.py` composition seam → `models`); `ui` does not import `viz3d` (static mount only).
+- **Honesty:** GUI renders no CLI/stdout; sandbox ≠ tracked; `simulated` flag + sample sizes + `unproven`/`validated` everywhere; no profit-language (checked in templates); nothing ranked `validated` without a gate PASS.
 
-## 7. Open questions the product owner still needs to answer
-None block Milestone 1. But before deep strategy work, resolve: real long-term market (crypto vs. futures), first exchange to standardize on, long/short vs long/flat, and single- vs multi-strategy MVP. See `docs/22-unanswered-questions.md`.
+Run `docs/archive/19` §19.1 safety review after any milestone or any change touching `risk/`, `execution/`, `autonomy/`, or the lockout.
 
-## 8. The one thing not to get wrong
-The biggest failure mode is **not** the engine — it's **overfitting / look-ahead bias** making a broken strategy look brilliant, and quietly relaxing the kill-criteria when the honest protocol rejects most ideas. Treat `docs/09` as the product. Expect to kill most strategies; that's success.
+## 5. What's left — M12 (final milestone → v1.0)
 
-## 9. Provenance
-Every material claim in the specs is cited; the full source list is `docs/23-appendix-source-map.md`. Licenses/pricing were verified July 2026 and **drift** — re-verify anything cost- or license-sensitive before spending money or distributing.
+Per `docs/10` M12:
+- [ ] Consolidate `tests/safety` + `tests/honesty`; re-run §19.1 + honesty checklist with evidence.
+- [ ] `license_gate.py` in CI (done — verify) + `THIRD_PARTY_NOTICES.md` (generator exists — verify current).
+- [ ] Packaging: local run script; optional desktop window (pywebview) / installer (PyTauri) — **verify localhost-only**; verify local-LLM weight licenses if distributing.
+- [ ] Backups for `data/`, `runs/`, `catalog.duckdb`; a one-command `lqe doctor` health check.
+- [ ] Update `HANDOFF`/`README`; short user guide.
+- **Exit gate:** all gates green with evidence; packaged app runs + binds 127.0.0.1 only + places no real order; `git tag v1.0`.
+
+## 6. Known small item (not a blocker)
+`lqe autopilot`/`lqe backtest` dump a raw `FileNotFoundError` traceback on a missing bundle instead of a clean error line + non-zero exit. Cosmetic; documented in the memory note `cli-missing-bundle-traceback`. Fix candidate for M12 polish.
+
+## 7. Working style that's been followed (keep it up)
+Tests-first; one milestone per session then STOP for review; real verification (run it, don't claim it); flag deviations loudly and get a decision when a NEVER/scope line is near; commit + `mN-done` tag at each exit gate. The owner periodically asks for a mid-build audit ("check everything is intact") — that's the §19.1 safety review + layering + full-gate + a completeness cross-check against the milestone exit criteria.

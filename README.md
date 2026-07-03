@@ -6,7 +6,7 @@ A **local, paper-only, autonomous quant research simulator**: a large catalog of
 
 ## Status: v1.0 (all milestones complete)
 
-The engine is built — M0–M12 done, verified, and tagged. **To run it, read [USER-GUIDE.md](USER-GUIDE.md)**; the release safety/honesty review with evidence is in [M12-RELEASE-REVIEW.md](M12-RELEASE-REVIEW.md); the developer orientation is in [HANDOFF.md](HANDOFF.md).
+The engine is built — M0–M12 done, verified, and tagged. **To run it, read [USER-GUIDE.md](USER-GUIDE.md)**; to understand how every piece works and how to operate/extend it, read **[COMPONENT-GUIDE.md](COMPONENT-GUIDE.md)**; the release safety/honesty review with evidence is in [M12-RELEASE-REVIEW.md](M12-RELEASE-REVIEW.md); the developer orientation is in [HANDOFF.md](HANDOFF.md).
 
 ```
 pip install -e ".[ui,search,dev]"

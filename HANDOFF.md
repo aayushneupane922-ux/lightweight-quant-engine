@@ -2,14 +2,31 @@
 
 **Purpose:** orient a developer (human or a fresh Claude Code session) picking this up cold. Read this, then `CLAUDE.md` (constitution) + `GUARDRAILS.md` + `WORKFLOW.md`, then `docs/10-production-roadmap.md` (the milestone map, kept checked-off as work lands).
 
-## 1. Status (v1.0 — all milestones complete)
+## 1. Status (v1.0 shipped; post-v1.0 extensions layered on top)
 
-A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 are complete, verified, committed, and tagged. The project is at v1.0.**
+A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 are complete, verified, committed, and tagged. The project is at v1.0.** Since the v1.0 tag, further work added functionality the owner asked for directly (not from `docs/10`, which ends at M12) — see §1a.
 
-- **Tags:** `m0-done` … `m11-done`, `m12-done`, plus `v0.1` and `v1.0`.
-- **Health:** **291 tests pass** · `ruff` clean · `mypy --strict` clean · license gate PASS · git tree clean.
-- **Release evidence:** `M12-RELEASE-REVIEW.md` (§19.1 safety + honesty checklist, every item PASS with a file:line / test / command citation). Runtime guide: `USER-GUIDE.md`.
+- **Tags:** `m0-done` … `m11-done`, `m12-done`, plus `v0.1` and `v1.0`. No tag yet for the post-v1.0 work below.
+- **Health:** **306 tests pass, 2 skipped** (the 2 skips are correct — see §1a) · `ruff` clean · `mypy --strict` clean (`src` + `scripts`) · license gate PASS (50 runtime deps) · git tree clean.
+- **Release evidence:** `M12-RELEASE-REVIEW.md` (§19.1 safety + honesty checklist, every item PASS with a file:line / test / command citation, as of the v1.0 tag). Runtime guide: `USER-GUIDE.md`. Deep-dive on every component + how to operate/extend it: **`COMPONENT-GUIDE.md`** (written post-v1.0; more current than this file for "how does X work").
 - **Branch:** `master`. Every milestone = one commit + a `mN-done` tag. Git identity is a local placeholder (set per-repo, flagged to the owner).
+
+### 1a. Post-v1.0 extensions (owner-directed, not in `docs/10`)
+
+`docs/10-production-roadmap.md` **ends at M12 → v1.0**. There is no formal M13+ in any doc. The next session should **ask the owner what "the roadmap" means going forward** rather than inventing milestones — the owner's last message said "move towards new version as per the roadmap," which may refer to a roadmap not yet shared, or an intent to define one together next session.
+
+What's been added on top of v1.0 so far, most recent first:
+
+1. **Live multi-model paper trading against real-time market data** (`scripts/run_live_fleet.py`, NOT part of the tagged `lqe` CLI). Every admitted catalog model gets its own isolated paper book; all share one hash-chained audit log and one kill switch. Polls a real public exchange (ccxt, no key) continuously. New modules: `live/live_feed.py`, `live/multi_model_runner.py`, `live/merge.py`, `autonomy/searchable_scaled.py` (broadens the autopilot's search surface from 3 to 10 native models). One addition to the shipped UI layer: `DeskData.set_state_reader` (lets a background loop swap in a fresh read-side snapshot so the desk updates live). Full writeup: `COMPONENT-GUIDE.md` §11.
+2. **Local Ollama installed on this machine** (`winget install Ollama.Ollama`, model `llama3.2:3b` pulled — see §1b for exact state) so the narrator can use a *genuine* local LLM instead of only the rule-based fallback. Fixed two real bugs in `autonomy/narrator.py` found by testing against the real server (not by inspection): `num_ctx` bounds Ollama's default 131k-token context (which otherwise tries to allocate a KV-cache buffer large enough to crash an ordinary machine), and Ollama's structured-output `format` parameter (JSON schema mirroring `autonomy.tools.Narrate`/`ProposeSpace`) reliably gets a small local model to emit the exact whitelisted tool shape — `parse_tool_calls` still validates independently and still fails closed regardless.
+3. **The `models` extra, statistical/ML subset installed** (`statsmodels arch hmmlearn ruptures scikit-learn lightgbm` — NOT the full `.[models]`, see §1b for why). Catalog admits 48/51 (was 42/51); the 2 heavy-lib quarantine tests for statsmodels/arch now correctly `skipif` (present) rather than assert absence — hence "306 passed, 2 skipped" above. CI is unaffected (still installs `.[ui,search,dev]`, so those 2 tests still run and pass in CI).
+
+### 1b. This machine's local environment state (not portable, not committed)
+
+- **Ollama**: installed at `%LOCALAPPDATA%\Programs\Ollama\ollama.exe`, runs as an auto-started Windows background service on `127.0.0.1:11434`. Model pulled: `llama3.2:3b` (~2GB). This is *this machine's* state, not part of the repo/venv — a fresh clone or a different machine won't have it.
+- **models extra**: `statsmodels`, `arch`, `hmmlearn`, `ruptures`, `scikit-learn`, `lightgbm` are installed in `.venv` (not just declared in `pyproject.toml`'s `[models]` extra — actually `pip install`ed). The 3 cvxpy-based portfolio optimizers (PyPortfolioOpt/skfolio/riskfolio-lib) are **not** installed — their `jupyter-widgets`/`vectorbt` dependency chain trips Windows' 260-character path limit unless `LongPathsEnabled=1` is set (admin + reboot); documented in `USER-GUIDE.md` §1.
+- **No servers running**: the live-fleet preview (port 8141) and the demo desk (port 8137) were both explicitly stopped at the end of the last session, and the background Python processes confirmed killed. `Ollama` itself is left running (it's an installed system service now, not an ad-hoc process this project spawned).
+- **Demo artifacts**: `data/`, `runs/`, `.claude/launch.json` (has a `live-fleet` config pointing at `scripts/run_live_fleet.py`) are local/untracked convenience state from demos, not part of the shipped product.
 
 ### Verify everything in one shot (Windows, from repo root)
 ```
@@ -61,21 +78,35 @@ The spec names some tools that were replaced for a good reason — same "own the
 
 Run `docs/archive/19` §19.1 safety review after any milestone or any change touching `risk/`, `execution/`, `autonomy/`, or the lockout.
 
-## 5. What's left — nothing (v1.0 shipped)
+## 5. What's left
 
-All twelve milestones are done and tagged. If work continues past v1.0, the
-natural next slices (all explicitly **out of scope** for the MVP, per `GUARDRAILS.md`):
-persist the autopilot's tracked book across process restarts; a real Ollama
-integration test behind a marker; wiring the `models` extra into a separate CI
-lane so the heavy adapters get exercised (kept out of the default lane on
-purpose — the quarantine tests need them absent). **None of these may weaken a
-lockout, the gate, or the honesty rails.**
+All twelve `docs/10` milestones are done and tagged — the roadmap as written
+has nothing left. Everything since v1.0 (§1a) was owner-directed, not
+roadmap-driven. Candidate next slices, **none decided, none in scope until
+the owner says so**:
 
-## 6. Formerly-known small item (now fixed in M12)
-`lqe backtest`/`lqe autopilot` used to dump a raw `FileNotFoundError` on a
-missing bundle. Fixed: `load_bundle` raises a typed `DataQualityError` and the
-CLI catches `LqeError` at the boundary → clean line + exit 1. Tests in
-`tests/integration/test_cli_ops.py`.
+- Formalize the live-fleet script into the tagged `lqe` CLI (e.g. `lqe live`)
+  if the owner wants it as a first-class, permanent command rather than a
+  script — currently deliberately kept separate from the v1.0 surface.
+- Persist the autopilot's tracked book across process restarts.
+- A real-Ollama integration test behind a marker (today's narrator tests
+  correctly use a fake/rule-based path; the real-server behavior was
+  verified manually this session, not captured as a repeatable test).
+- Wire the `models` extra into a separate CI lane so the heavy adapters get
+  exercised there (kept out of the default lane on purpose — the quarantine
+  tests need `.[models]` absent in that lane).
+- Enable Windows long-path support and finish installing the 3 cvxpy
+  portfolio optimizers (§1b) if the owner wants the full 51/51 admitted.
+- Define what "next version" / "the roadmap" actually means — **ask the
+  owner**; nothing here should be assumed.
+
+**None of these may weaken a lockout, the gate, or the honesty rails.**
+
+## 6. Resolved items (historical, kept for context)
+- `lqe backtest`/`lqe autopilot` used to dump a raw `FileNotFoundError` on a
+  missing bundle. Fixed in M12: `load_bundle` raises a typed
+  `DataQualityError` and the CLI catches `LqeError` at the boundary → clean
+  line + exit 1. Tests in `tests/integration/test_cli_ops.py`.
 
 ## 7. Working style that's been followed (keep it up)
 Tests-first; one milestone per session then STOP for review; real verification (run it, don't claim it); flag deviations loudly and get a decision when a NEVER/scope line is near; commit + `mN-done` tag at each exit gate. The owner periodically asks for a mid-build audit ("check everything is intact") — that's the §19.1 safety review + layering + full-gate + a completeness cross-check against the milestone exit criteria.

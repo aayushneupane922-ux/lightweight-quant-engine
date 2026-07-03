@@ -10,7 +10,20 @@ from decimal import Decimal
 
 from lqe.backtest.runner import run_backtest
 from lqe.core.engine import AuditLog
-from lqe.core.events import FillEvent, MarketEvent, Order, OrderIntent, RiskDecision
+from lqe.core.events import (
+    ControlEvent,
+    DeRiskEvent,
+    FillEvent,
+    HypothesisEvent,
+    MarketEvent,
+    NarrationEvent,
+    Order,
+    OrderIntent,
+    PromotionEvent,
+    RiskDecision,
+    TrialEvent,
+    ValidationEvent,
+)
 from lqe.core.types import Symbol
 from lqe.models.plugins.trend_ma_cross import TrendMaCross
 from lqe.storage.state_reader import CatalogModelInfo, StateReader, blotter_empty_state_reason
@@ -332,3 +345,149 @@ def test_blotter_empty_state_reason_explains_sandbox_exploration() -> None:
     reason = blotter_empty_state_reason(snap, [])  # force the "no rows" branch
     assert reason is not None
     assert "sandbox" in reason or "watching" in reason
+
+
+# -- "Engine Room" conversation (docs/13 M21) -------------------------------
+
+
+def _conversation_log() -> AuditLog:
+    """One full loop iteration: Strategist proposes -> Optimizer runs
+    trials -> Judge fails it -> Autopilot narrates -> a human KILLs ->
+    Risk de-risks -> a separate candidate gets promoted."""
+    log = AuditLog()
+    seq = 1
+
+    log.append(
+        event_type="HypothesisEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=HypothesisEvent(
+            hypo_id="h1",
+            rationale="Volatility on BTC is climbing -- test wider breakout lookbacks.",
+            target_models=["breakout_x"], proposed_space={}, regime="trending",
+        ),
+    )
+    seq += 1
+    for i, (metric, lookback) in enumerate([(0.8, 20), (1.42, 48), (1.1, 80)]):
+        log.append(
+            event_type="TrialEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+            payload=TrialEvent(
+                trial_id=f"t{i}", hypo_id="h1", study_id="s1", params={"lookback": lookback},
+                oos_metric=metric, seed=1, index=i,
+            ),
+        )
+        seq += 1
+    log.append(
+        event_type="ValidationEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=ValidationEvent(
+            candidate_id="cand:breakout_x:1", result="FAIL", dsr=0.10, pbo=0.71,
+            cost_survived=True, beats_equal_weight=False, evidence={"n_trials": 3},
+        ),
+    )
+    seq += 1
+    log.append(
+        event_type="NarrationEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=NarrationEvent(
+            text="Discarding this idea, logging the hypothesis, moving on to mean-reversion."
+        ),
+    )
+    seq += 1
+    log.append(
+        event_type="ControlEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=ControlEvent(command="KILL", source="ui", operator="alice", note="manual halt"),
+    )
+    seq += 1
+    log.append(
+        event_type="DeRiskEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=DeRiskEvent(reason="drawdown breach", models=["breakout_x"], action="PAUSE"),
+    )
+    seq += 1
+    log.append(
+        event_type="PromotionEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=PromotionEvent(
+            candidate_id="cand:trend_ma_cross:1", from_book="sandbox", to_book="tracked",
+            config_version="v1",
+        ),
+    )
+    return log
+
+
+def test_conversation_has_one_turn_per_participant_role() -> None:
+    messages = StateReader(_conversation_log().records).conversation().messages
+    participants = [m.participant for m in messages]
+    expected = ["Strategist", "Optimizer", "Judge", "Autopilot", "Risk", "Risk", "Judge"]
+    assert participants == expected
+
+
+def test_conversation_optimizer_card_summarizes_best_trial_not_each_one() -> None:
+    messages = StateReader(_conversation_log().records).conversation().messages
+    optimizer = next(m for m in messages if m.participant == "Optimizer")
+    assert "3 trials" in optimizer.text
+    assert "1.42" in optimizer.text  # the best oos_metric, not the first/last
+    assert "lookback=48" in optimizer.text
+    # no cryptic internal IDs in the default text
+    assert "h1" not in optimizer.text and "t0" not in optimizer.text and "s1" not in optimizer.text
+
+
+def test_conversation_judge_message_carries_verdict_for_ui_coloring() -> None:
+    messages = StateReader(_conversation_log().records).conversation().messages
+    judge_cards = [m for m in messages if m.participant == "Judge" and m.kind == "card"]
+    assert len(judge_cards) == 1
+    assert judge_cards[0].verdict == "FAIL"
+    assert "DSR 0.10" in judge_cards[0].text and "PBO 0.71" in judge_cards[0].text
+
+
+def test_conversation_only_judge_messages_ever_carry_a_verdict() -> None:
+    # matches the safety model: only the Judge/Validator sets a verdict
+    messages = StateReader(_conversation_log().records).conversation().messages
+    for m in messages:
+        if m.verdict is not None:
+            assert m.participant == "Judge"
+
+
+def test_conversation_kill_and_derisk_appear_as_messages() -> None:
+    messages = StateReader(_conversation_log().records).conversation().messages
+    risk_messages = [m for m in messages if m.participant == "Risk"]
+    assert any("Kill" in m.text and "alice" in m.text for m in risk_messages)
+    assert any("De-risking" in m.text and "drawdown breach" in m.text for m in risk_messages)
+
+
+def test_conversation_promotion_is_attributed_to_the_judge_not_the_strategist() -> None:
+    # "the Judge is visibly the one who decides" (docs/13 M21 honesty bullet)
+    messages = StateReader(_conversation_log().records).conversation().messages
+    promotion = next(m for m in messages if "Promoted" in m.text)
+    assert promotion.participant == "Judge"
+    assert "trend_ma_cross" in promotion.text
+
+
+def test_conversation_replays_deterministically_at_an_earlier_seq() -> None:
+    reader = StateReader(_conversation_log().records)
+    full = reader.conversation()
+    mid = reader.conversation(at_seq=3)  # partway through the trials
+    assert mid.max_seq == full.max_seq  # max_seq always reflects the whole log
+    assert len(mid.messages) == 2  # Strategist + a partial Optimizer summary
+    assert "trials" in mid.messages[1].text
+    # replaying the same at_seq twice is byte-identical (determinism)
+    again = reader.conversation(at_seq=3)
+    assert mid == again
+
+
+def test_conversation_no_raw_json_or_cryptic_ids_in_default_text() -> None:
+    messages = StateReader(_conversation_log().records).conversation().messages
+    for m in messages:
+        assert "{" not in m.text and "}" not in m.text
+        assert "cand:" not in m.text and "hypo_id" not in m.text
+
+
+def test_conversation_works_from_templated_narration_without_an_llm() -> None:
+    # NarrationEvent.text is read as-is regardless of which narrator wrote
+    # it (RuleBased or Ollama) -- the feed never depends on the LLM being
+    # present to produce a message.
+    messages = StateReader(_conversation_log().records).conversation().messages
+    autopilot = next(m for m in messages if m.participant == "Autopilot")
+    expected = "Discarding this idea, logging the hypothesis, moving on to mean-reversion."
+    assert autopilot.text == expected
+
+
+def test_conversation_is_empty_and_valid_when_the_audit_log_has_no_autonomy_events() -> None:
+    payload = StateReader([]).conversation()
+    assert payload.messages == []
+    assert payload.at_seq == 0 and payload.max_seq == 0

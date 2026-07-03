@@ -225,6 +225,53 @@
     }
   }
 
+  // -- Engine Room conversation (Intel view, docs/13 M21) ----------------
+  // A timeline scrubber replays the conversation exactly as it was at any
+  // past seq -- same /api/graph?at_seq= pattern the Engine view already
+  // uses, since runs are deterministic.
+
+  function paintConversation(payload) {
+    var feed = document.getElementById("convo-feed");
+    if (!feed) return;
+    var scrubber = document.getElementById("convo-scrubber");
+    var label = document.getElementById("convo-seq-label");
+    if (scrubber) { scrubber.max = payload.max_seq; scrubber.value = payload.at_seq; }
+    if (label) label.textContent = "seq " + payload.at_seq + " / " + payload.max_seq;
+    if (!payload.messages.length) {
+      feed.innerHTML = '<div class="narr" id="convo-empty">No autonomy steps recorded yet ' +
+        "— run <code>lqe autopilot</code> and point the desk at its audit log.</div>";
+      return;
+    }
+    feed.innerHTML = "";
+    payload.messages.forEach(function (m) {
+      var div = document.createElement("div");
+      var cls = "convo-msg convo-" + m.participant.toLowerCase();
+      if (m.kind === "card") cls += " convo-card";
+      if (m.verdict) cls += " convo-verdict-" + m.verdict.toLowerCase();
+      div.className = cls;
+      var detail = m.detail
+        ? '<details><summary>Details</summary><div class="convo-detail">' + m.detail + "</div></details>"
+        : "";
+      div.innerHTML =
+        '<span class="convo-who">' + m.participant + "</span>" +
+        '<span class="convo-text">' + m.text + "</span>" + detail;
+      feed.appendChild(div);
+    });
+  }
+
+  function loadConversation(atSeq) {
+    var url = "/api/conversation" + (atSeq != null ? "?at_seq=" + atSeq : "");
+    fetch(url).then(function (r) { return r.json(); }).then(paintConversation);
+  }
+
+  function initConversationScrubber() {
+    var scrubber = document.getElementById("convo-scrubber");
+    if (!scrubber) return;
+    scrubber.addEventListener("input", function () {
+      loadConversation(parseInt(scrubber.value, 10));
+    });
+  }
+
   function apply(payload) {
     if (payload.snapshot) {
       paintSession(payload.snapshot);
@@ -532,6 +579,7 @@
     });
     initPalette();
     initBlotterFilters();
+    initConversationScrubber();
     connect();
   });
 })();

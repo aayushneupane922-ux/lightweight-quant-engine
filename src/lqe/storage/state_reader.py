@@ -176,6 +176,42 @@ class DecisionCard(BaseModel):
     narration: str
 
 
+Participant = Literal["Strategist", "Optimizer", "Judge", "Autopilot", "Risk"]
+
+
+class ConversationMessage(BaseModel):
+    """One turn of the "Engine Room" conversation (docs/13 M21): the LLM
+    (Strategist), Optuna (Optimizer), the Validator (Judge), Autopilot, and
+    Risk, rendered as a readable dialogue -- reconstructed read-only from
+    the same autonomy/narration/control events `decision_cards()` reads,
+    just as individual turns instead of one summary card per hypothesis.
+    `detail` is plain text (never raw JSON) for an optional "Details"
+    disclosure; `verdict` is set only on the Judge's validation card, so
+    the UI can color it long/short by outcome rather than a fixed hue."""
+
+    model_config = _FROZEN
+    seq: int
+    sim_ts: datetime
+    participant: Participant
+    kind: Literal["message", "card"]
+    text: str
+    detail: str = ""
+    model_id: str = ""
+    verdict: Literal["PASS", "FAIL"] | None = None
+
+
+class ConversationPayload(BaseModel):
+    """docs/13 M21. `at_seq`/`max_seq` support the same replay-at-a-point
+    pattern as `GraphPayload` -- because runs are deterministic, scrubbing
+    to an earlier `at_seq` reproduces that exact prefix of the
+    conversation, every time."""
+
+    model_config = _FROZEN
+    at_seq: int
+    max_seq: int
+    messages: list[ConversationMessage]
+
+
 NodeKind = Literal["tracked", "sandbox", "meta", "regime"]
 LinkKind = Literal["corr+", "corr-", "dataflow", "attention", "promotion"]
 
@@ -341,6 +377,95 @@ class StateReader:
         built = [c.build() for c in cards]
         return list(reversed(built))[:limit]
 
+    # -- "Engine Room" conversation (docs/13 M21) ---------------------------
+
+    def conversation(self, *, at_seq: int | None = None) -> ConversationPayload:
+        """The autonomy loop as a readable dialogue, oldest first --
+        reconstructed straight from `HypothesisEvent`/`TrialEvent`/
+        `ValidationEvent`/`PromotionEvent`/`DeRiskEvent`/`NarrationEvent`/
+        `ControlEvent`, exactly the events `decision_cards()` already reads,
+        just presented as turns instead of one card per hypothesis.
+        `at_seq` replays the conversation exactly as it was at that point in
+        the session (same deterministic-replay pattern as `graph()`)."""
+        max_seq = self._records[-1].seq if self._records else 0
+        effective = max_seq if at_seq is None else at_seq
+        records = [r for r in self._records if r.seq <= effective]
+
+        messages: list[ConversationMessage] = []
+        pending_trials: list[dict[str, Any]] = []
+        pending_model = ""
+
+        def flush_trials(anchor: EventEnvelope) -> None:
+            if not pending_trials:
+                return
+            best = max(pending_trials, key=lambda t: float(t["oos_metric"]))
+            params = ", ".join(f"{k}={v}" for k, v in best["params"].items())
+            text = f"Ran {len(pending_trials)} trials — best Sharpe {best['oos_metric']:.2f}"
+            if params:
+                text += f" ({params})"
+            messages.append(
+                ConversationMessage(
+                    seq=anchor.seq, sim_ts=anchor.sim_ts, participant="Optimizer", kind="card",
+                    text=text, model_id=pending_model,
+                )
+            )
+            pending_trials.clear()
+
+        for env in records:
+            t = env.type
+            p = env.payload
+            if t == "HypothesisEvent":
+                flush_trials(env)
+                models = p.get("target_models") or []
+                pending_model = str(models[0]) if models else ""
+                messages.append(
+                    ConversationMessage(
+                        seq=env.seq, sim_ts=env.sim_ts, participant="Strategist", kind="message",
+                        text=str(p.get("rationale", "")), model_id=pending_model,
+                    )
+                )
+            elif t == "TrialEvent":
+                pending_trials.append(
+                    {"oos_metric": float(p["oos_metric"]), "params": dict(p.get("params") or {})}
+                )
+            elif t == "ValidationEvent":
+                flush_trials(env)
+                messages.append(_validation_message(env, pending_model))
+            elif t == "PromotionEvent":
+                model_id = _model_from_candidate(str(p.get("candidate_id", ""))) or pending_model
+                messages.append(
+                    ConversationMessage(
+                        seq=env.seq, sim_ts=env.sim_ts, participant="Judge", kind="message",
+                        text=f"Promoted {model_id or 'the candidate'} to the tracked book "
+                        "— validated.",
+                        model_id=model_id,
+                    )
+                )
+            elif t == "DeRiskEvent":
+                models_str = ", ".join(str(m) for m in (p.get("models") or []))
+                messages.append(
+                    ConversationMessage(
+                        seq=env.seq, sim_ts=env.sim_ts, participant="Risk", kind="card",
+                        text=f"De-risking {models_str or 'affected models'} "
+                        f"({p.get('action', 'REDUCE')}) — {p.get('reason', '')}",
+                        model_id=models_str,
+                    )
+                )
+            elif t == "NarrationEvent":
+                messages.append(
+                    ConversationMessage(
+                        seq=env.seq, sim_ts=env.sim_ts, participant="Autopilot", kind="message",
+                        text=str(p.get("text", "")), model_id=pending_model,
+                    )
+                )
+            elif t == "ControlEvent":
+                messages.append(_control_message(env))
+
+        if records and pending_trials:
+            flush_trials(records[-1])
+
+        return ConversationPayload(at_seq=effective, max_seq=max_seq, messages=messages)
+
     # -- 3D neural-web graph ----------------------------------------------
 
     def graph(self, *, at_seq: int | None = None) -> GraphPayload:
@@ -500,6 +625,55 @@ def _model_from_candidate(candidate_id: str) -> str:
     """`candidate_id` is `cand:<model_id>:<step>` (orchestrator convention)."""
     parts = candidate_id.split(":")
     return parts[1] if len(parts) >= 2 else ""
+
+
+def _validation_message(env: EventEnvelope, pending_model: str) -> ConversationMessage:
+    """docs/13 M21: the Judge's turn -- the only participant whose message
+    carries a `verdict`, so the UI can color it long/short by outcome, not
+    a fixed hue (the spec's "Judge = long/short by verdict" requirement)."""
+    p = env.payload
+    result = str(p.get("result", "FAIL"))
+    verdict: Literal["PASS", "FAIL"] = "PASS" if result == "PASS" else "FAIL"
+    glyph = "✓" if verdict == "PASS" else "✗"
+    dsr = float(str(p.get("dsr", "nan")))
+    pbo = float(str(p.get("pbo", "nan")))
+    reasons = []
+    if not p.get("cost_survived", True):
+        reasons.append("doesn't survive costs")
+    if not p.get("beats_equal_weight", True):
+        reasons.append("doesn't beat equal-weight")
+    if verdict == "PASS" and not reasons:
+        reasons.append("beats equal-weight after costs")
+    text = f"{glyph} {verdict} — DSR {dsr:.2f}, PBO {pbo:.2f}"
+    if reasons:
+        text += ", " + "; ".join(reasons)
+    model_id = _model_from_candidate(str(p.get("candidate_id", ""))) or pending_model
+    evidence = p.get("evidence") or {}
+    detail = ", ".join(f"{k}: {v}" for k, v in evidence.items())
+    return ConversationMessage(
+        seq=env.seq, sim_ts=env.sim_ts, participant="Judge", kind="card",
+        text=text, detail=detail, model_id=model_id, verdict=verdict,
+    )
+
+
+def _control_message(env: EventEnvelope) -> ConversationMessage:
+    """docs/13 M21: "kill and de-risk events appear as messages too" --
+    the human's own interventions are part of the conversation, not a
+    separate silent channel."""
+    p = env.payload
+    command = str(p.get("command", ""))
+    operator = str(p.get("operator", ""))
+    note = str(p.get("note", ""))
+    is_autopilot_toggle = command in ("AUTOPILOT_ON", "AUTOPILOT_OFF")
+    participant: Participant = "Autopilot" if is_autopilot_toggle else "Risk"
+    text = command.replace("_", " ").title()
+    if operator:
+        text += f" — {operator}"
+    if note:
+        text += f": {note}"
+    return ConversationMessage(
+        seq=env.seq, sim_ts=env.sim_ts, participant=participant, kind="message", text=text,
+    )
 
 
 # --- decision-card assembly -----------------------------------------------

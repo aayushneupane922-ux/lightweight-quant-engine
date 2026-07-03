@@ -229,6 +229,31 @@ table.kv2 td:last-child { text-align:right; font-family:var(--data); }
 .scrub input[type=range] { flex:1; accent-color:var(--intel); }
 .scrub .mute { color:var(--mute); font-size:10.5px; }
 
+/* Engine Room conversation (Intel view, docs/13 M21) */
+.convo-scrub { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.convo-scrub input[type=range] { flex:1; accent-color:var(--intel); }
+.convo { display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
+.convo-msg { background:var(--slab); border:1px solid var(--ridge); border-left:3px solid var(--ridge);
+  border-radius:5px; padding:9px 12px; font-size:12px; line-height:1.5; }
+.convo-who { display:block; font-weight:600; font-size:10px; letter-spacing:.08em;
+  text-transform:uppercase; margin-bottom:3px; }
+.convo-card .convo-text { font-family:var(--data); font-size:11.5px; }
+.convo-detail { margin-top:6px; color:var(--mute); font-size:10.5px; font-family:var(--data); }
+.convo-msg summary { color:var(--mute); font-size:10px; letter-spacing:.05em;
+  text-transform:uppercase; cursor:pointer; margin-top:4px; }
+/* Strategist = --intel, Autopilot = --amber, Risk = --short, Optimizer = --mute (neutral) */
+.convo-strategist { border-left-color:var(--intel); } .convo-strategist .convo-who { color:var(--intel); }
+.convo-optimizer { border-left-color:var(--mute); } .convo-optimizer .convo-who { color:var(--mute); }
+.convo-autopilot { border-left-color:var(--amber); } .convo-autopilot .convo-who { color:var(--amber); }
+.convo-risk { border-left-color:var(--short); } .convo-risk .convo-who { color:var(--short); }
+/* Judge = long/short by verdict, not a fixed hue -- a plain "Judge" turn
+   (e.g. a promotion message) defaults to --intel until a verdict is set */
+.convo-judge { border-left-color:var(--intel); } .convo-judge .convo-who { color:var(--intel); }
+.convo-verdict-pass { border-left-color:var(--long) !important; }
+.convo-verdict-pass .convo-who { color:var(--long) !important; }
+.convo-verdict-fail { border-left-color:var(--short) !important; }
+.convo-verdict-fail .convo-who { color:var(--short) !important; }
+
 /* focus rings (a11y, docs/13 M19) — visible, never color-alone */
 a:focus-visible, button:focus-visible, input:focus-visible, [role="option"]:focus-visible,
 .mode:focus-visible, .cell:focus-visible {

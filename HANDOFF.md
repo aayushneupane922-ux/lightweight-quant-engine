@@ -2,12 +2,12 @@
 
 **Purpose:** orient a developer (human or a fresh Claude Code session) picking this up cold. Read this, then `CLAUDE.md` (constitution) + `GUARDRAILS.md` + `WORKFLOW.md`, then `docs/10-production-roadmap.md` (the milestone map, kept checked-off as work lands).
 
-## 1. Status (v2.0 shipped; v3.0 in progress — M20/5 done)
+## 1. Status (v2.0 shipped; v3.0 in progress — M21/5 done)
 
-A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 (v1.0)** and **M13 through M17 (v2.0, `docs/12-v2-roadmap.md`)** are complete, verified, committed, and tagged. **v3.0 (`docs/13-v3-roadmap.md`, M18–M22) is in progress: M18, M19, and M20 are done and tagged; M21–M22 are not started.** v4.0 (`docs/14-v4-catalog-expansion.md`, M23–M26) is scoped but not started at all. See §1a/§1c.
+A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 (v1.0)** and **M13 through M17 (v2.0, `docs/12-v2-roadmap.md`)** are complete, verified, committed, and tagged. **v3.0 (`docs/13-v3-roadmap.md`, M18–M22) is in progress: M18, M19, M20, and M21 are done and tagged; only M22 (hardening + release) is left.** v4.0 (`docs/14-v4-catalog-expansion.md`, M23–M26) is scoped but not started at all. See §1a/§1c.
 
-- **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, `m13-done` … `m17-done`, `v2.0`, then `m18-done`, `m19-done`, `m20-done`.
-- **Health:** full suite green (391 tests, 8 correctly skipped as of `m20-done`), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`), license gate PASS (50 runtime deps), git tree clean.
+- **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, `m13-done` … `m17-done`, `v2.0`, then `m18-done`, `m19-done`, `m20-done`, `m21-done`.
+- **Health:** full suite green (409 tests, 8 correctly skipped as of `m21-done`), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`), license gate PASS (50 runtime deps), git tree clean.
 - **Release evidence:** `M12-RELEASE-REVIEW.md` (v1.0) and `V2-RELEASE-REVIEW.md` (v2.0, M13–M16) — both full §19.1 safety/honesty reviews with evidence. v3.0 doesn't have its own review yet — that's M22's job, not done until v3.0 tags. Runtime guide: `USER-GUIDE.md` (not yet updated for v3/M18 — that's also M22's job per `docs/13`'s own plan). Deep-dive on every component: **`COMPONENT-GUIDE.md`** (also not yet updated for M18 — same reason).
 - **Branch:** `master`. Every milestone = one commit + a `mN-done` tag. Git identity is a local placeholder (set per-repo, flagged to the owner).
 
@@ -55,7 +55,15 @@ The owner sent `DEVELOPER-HANDOFF.md` (a standalone, non-agent-jargon briefing o
 - `/ws`'s live-push frame now carries `blotter` alongside `snapshot`/`tape`; `/api/blotter` mirrors the read-only JSON contract of `/api/tape`.
 - 19 new tests + `/blotter` added to the existing honesty-check page list. Full detail + exact file/test citations: `docs/13-v3-roadmap.md`'s M20 section. Verified live against the real `lqe desk` server with `runs/desk-preview/audit.jsonl`: real fills rendered on the Blotter page, the nav/`F8` link worked, `/api/blotter` returned real lifecycle JSON, and a live WebSocket connection's first frame carried 15 real blotter rows.
 
-**M21–M22 not started.**
+**M21 (the "Engine Room" conversation feed) is done, tagged `m21-done`:**
+- New **conversation/timeline feed** on `/intel` (added alongside the existing M9 decision cards, not replacing them): new `StateReader.conversation()` reconstructs a readable dialogue between named participants — **Strategist** (`HypothesisEvent`), **Optimizer** (`TrialEvent`s aggregated into one "Ran N trials — best Sharpe X (params)" card per hypothesis, never one message per trial), **Judge** (`ValidationEvent`), **Autopilot** (`NarrationEvent`), **Risk** (`ControlEvent`/`DeRiskEvent`) — straight off events already in the audit log, no new event type.
+- **Color-coded, verdict-driven for the Judge**: the Judge's card carries a `verdict` field so its color is long/short by outcome, not a fixed hue — "the Judge is visibly the one who decides," confirmed by a test that promotion messages are attributed to the Judge, never the Strategist.
+- **No code/JSON/cryptic IDs** in the default text (internal `hypo_id`/`candidate_id` are grouping keys only, never rendered); a native `<details>` disclosure reveals the Judge's evidence as plain text for power users.
+- **Works without the LLM by construction**: `conversation()` reads `NarrationEvent.text` as-is regardless of which narrator wrote it — no LLM-specific code path exists to break.
+- **Deterministic replay**: new `GET /api/conversation?at_seq=` + a timeline scrubber (same UX as the Engine 3D view's) — verified live that scrubbing mid-campaign correctly reproduces a partial trial count, not the final one.
+- 18 new tests. **Verified live against a real `lqe autopilot` campaign** (not a synthetic fixture): built a real replay bundle, ran 3 real hypothesis cycles, served the resulting audit log, and confirmed the feed, the scrubber, and the kill control all worked end to end with real Sharpe/DSR/PBO numbers. Full detail: `docs/13-v3-roadmap.md`'s M21 section.
+
+**Only M22 (v3 hardening + release) is left before `v3.0` tags.**
 
 **v4 (`docs/14-v4-catalog-expansion.md`, M23–M26) is fully scoped but zero work has started.** It depends on nothing in v3, so it could in principle be worked in parallel/before v3 finishes if the owner wants — not assumed, ask.
 
@@ -98,6 +106,7 @@ CI (`.github/workflows/ci.yml`) now has **two jobs**: `check` (installs `.[ui,se
 - **M18** — zero-CLI one-click launch: `run.py` rewritten (one-click launcher + first-run auto-ingest), `ops/jobs.JobManager` (GUI-triggered ingest/backtest/live start-stop), `live/session.LiveSession` (extracted from `cli._cmd_live`, shared by CLI + JobManager), onboarding screen (`LaunchState` + middleware), Live Control panel (Floor) + Quick Backtest panel (Research). Docs (`USER-GUIDE`/`COMPONENT-GUIDE`) intentionally not yet updated for this — that's M22's job per `docs/13`'s own plan, not an oversight.
 - **M19** — institutional UI/UX polish: vendored TradingView Lightweight Charts (owner's call) for a Floor hero chart (candlestick + streaming equity, fill-vs-outline colorblind-safe), new `StateReader.price_series`/`.equity_curve` + `/api/chart/*`, a ⌘K/Ctrl+K command palette, `aria-live` toasts, a real AA-contrast audit (fixed `--mute`), focus rings, sticky table headers, tabular-nums. Found the design system's tokens/layout already matched spec since M7-M10.
 - **M20** — live trade blotter: new `/blotter` view (`F8`) + `StateReader.blotter()`/`.reconciliation()` reconstruct the full intent → risk decision → fill/reject lifecycle straight off events already in the audit log, one row per fill; unmissable feedback (flash/toast/Floor-cell-pulse/optional sound); an honest, deterministic empty-state reason; `/ws` now pushes blotter rows too. Verified the real live fleet's fills genuinely reach the blotter (not just a display test) via a dedicated real-fleet integration test.
+- **M21** — "Engine Room" conversation feed: new `StateReader.conversation()` reconstructs a readable Strategist/Optimizer/Judge/Autopilot/Risk dialogue on `/intel` (alongside, not replacing, M9's decision cards), color-coded with the Judge's card verdict-driven (long/short by outcome); new `GET /api/conversation?at_seq=` + a timeline scrubber (same pattern as the Engine 3D view's). Verified against a real `lqe autopilot` campaign, including deterministic mid-campaign replay.
 
 ## 3. Key deviations from the named spec (all deliberate + flagged)
 
@@ -126,10 +135,7 @@ Run `docs/archive/19` §19.1 safety review after any milestone or any change tou
 
 ## 5. What's left
 
-**Immediate next step: M21 (the "Engine Room" conversation feed),
-`docs/13-v3-roadmap.md`.** M20 (live trade blotter) is now done. Then
-**M22 (v3 hardening + release: safety/honesty re-review,
-`V3-RELEASE-REVIEW.md`, docs updated for real this time, tag `v3.0`)**.
+**Immediate next step: M22 (v3 hardening + release), `docs/13-v3-roadmap.md` — the last milestone before `v3.0` tags.** M18–M21 are all done. M22 is: extend `tests/safety`+`tests/honesty` to the M18–M21 surfaces, re-run the §19.1 safety/honesty review with evidence (`V3-RELEASE-REVIEW.md`), and update `USER-GUIDE.md`/`COMPONENT-GUIDE.md` for real (both have been deferred to this milestone by design since M18, not by oversight — check `docs/13`'s own M22 checklist for the exact scope before starting).
 
 After v3.0 (or in parallel, if the owner prefers — see §1c): **v4
 (`docs/14-v4-catalog-expansion.md`, M23–M26)** — measured catalog

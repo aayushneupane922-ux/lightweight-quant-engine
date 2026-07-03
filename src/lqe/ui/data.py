@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 from lqe.live.control import Command, ControlPlane
 from lqe.storage.state_reader import (
     BlotterRow,
+    ConversationPayload,
     DecisionCard,
     EquityPoint,
     GraphPayload,
@@ -134,6 +135,9 @@ class DeskData:
 
     def decision_cards(self, *, limit: int = 30) -> list[DecisionCard]:
         return self._state_reader.decision_cards(limit=limit)
+
+    def conversation(self, *, at_seq: int | None = None) -> ConversationPayload:
+        return self._state_reader.conversation(at_seq=at_seq)
 
     def graph(self, *, at_seq: int | None = None) -> GraphPayload:
         return self._state_reader.graph(at_seq=at_seq)

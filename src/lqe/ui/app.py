@@ -130,7 +130,11 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
     @app.get("/intel", response_class=HTMLResponse)
     def intel(request: Request) -> Any:
         return templates.TemplateResponse(
-            request, "intel.html", _ctx(request, "intel", cards=data.decision_cards())
+            request, "intel.html",
+            _ctx(
+                request, "intel", cards=data.decision_cards(),
+                conversation=data.conversation(),
+            ),
         )
 
     @app.get("/engine", response_class=HTMLResponse)
@@ -179,6 +183,12 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
     def api_graph(at_seq: int | None = None) -> JSONResponse:
         # read-only; `at_seq` replays the neural-web at a point in the session
         return JSONResponse(data.graph(at_seq=at_seq).model_dump(mode="json"))
+
+    @app.get("/api/conversation")
+    def api_conversation(at_seq: int | None = None) -> JSONResponse:
+        # docs/13 M21: the "Engine Room" feed; `at_seq` replays it exactly
+        # as it was at that point in the session (same pattern as /api/graph)
+        return JSONResponse(data.conversation(at_seq=at_seq).model_dump(mode="json"))
 
     # docs/13 M19: the Floor hero chart's data — read-only, same
     # `StateReader` the rest of the desk already reads from. `symbol`

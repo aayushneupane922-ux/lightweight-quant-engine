@@ -11,6 +11,26 @@
   Nothing here is promoted without a gate PASS, and the LLM can neither size an order nor clear the kill.
 </div>
 
+<h2 style="font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--intel); margin-bottom:8px">Engine Room · live conversation</h2>
+<div class="convo-scrub">
+  <span class="mono" id="convo-seq-label">seq {{ conversation.at_seq }} / {{ conversation.max_seq }}</span>
+  <input type="range" id="convo-scrubber" min="0" max="{{ conversation.max_seq }}" value="{{ conversation.at_seq }}" step="1">
+  <span class="mute">timeline replay (deterministic) — no code, no JSON, no cryptic IDs in the default view</span>
+</div>
+<div class="convo" id="convo-feed">
+  {% for m in conversation.messages %}
+  <div class="convo-msg convo-{{ m.participant.lower() }}{% if m.kind == 'card' %} convo-card{% endif %}{% if m.verdict %} convo-verdict-{{ m.verdict.lower() }}{% endif %}">
+    <span class="convo-who">{{ m.participant }}</span>
+    <span class="convo-text">{{ m.text }}</span>
+    {% if m.detail %}<details><summary>Details</summary><div class="convo-detail">{{ m.detail }}</div></details>{% endif %}
+  </div>
+  {% endfor %}
+  {% if not conversation.messages %}
+  <div class="narr" id="convo-empty">No autonomy steps recorded yet — run <code>lqe autopilot</code> and point the desk at its audit log.</div>
+  {% endif %}
+</div>
+
+<h2 style="font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--intel); margin:18px 0 8px">Per-hypothesis summary</h2>
 <div class="cards">
   {% for c in cards %}
   <div class="card">

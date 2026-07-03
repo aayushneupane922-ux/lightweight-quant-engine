@@ -253,53 +253,75 @@ trades actually flow.)
 - **Exit gate:** ✅ full suite green (391 tests, 8 correctly skipped) +
   ruff + mypy + license gate green; `git tag m20-done`.
 
-## M21 — The "Engine Room" conversation (watch the LLM, ML & autopilot talk)  · L · Dep: M19
+## M21 — The "Engine Room" conversation (watch the LLM, ML & autopilot talk)  · L · Dep: M19  ✅ `m21-done`
 **Goal:** witness the LLM, the optimizer, the validator, and the autopilot
 communicate — in plain English, live, no code or cryptic IDs. (Agent-UX
 research: showing intermediate steps as inline "tool-call cards" kills the
 black-box feeling; the interface is the *accountability layer* between
 intent and autonomous action.)
 
-- [ ] A **conversation/timeline feed** rendered as a readable dialogue
-  between named participants: **Strategist (LLM)** · **Optimizer (Optuna)**
-  · **Judge (Validator)** · **Autopilot** · **Risk**. Each turn = one
-  plain-language sentence **+** a compact "what it did" card. Example of
-  one loop iteration:
-  - **Strategist:** "Volatility on BTC is climbing — I'll test wider
-    breakout lookbacks (20–80) with tighter stops."
-  - **Optimizer:** `card` "Ran 60 trials · best Sharpe 1.42 @ lookback 48"
-  - **Judge:** `card` "❌ Failed — DSR 0.10, PBO 0.71, doesn't beat
-    equal-weight after costs"
-  - **Autopilot:** "Discarding this idea, logging the hypothesis, moving on
-    to mean-reversion."
-- [ ] Every loop step (OBSERVE → HYPOTHESIZE → SEARCH → VALIDATE → DECIDE →
-  NARRATE) becomes one or more messages, timestamped, **color-coded by
-  participant** (Strategist = `--intel` violet; Judge = long/short by
-  verdict; Autopilot = `--amber`; Risk = `--short` on breach). **No code,
-  no JSON, no cryptic IDs** in the default view — a "Details" disclosure
-  can reveal params for power users.
-- [ ] **Honesty is structural, not decorative:** the **Judge (deterministic
-  math) is visibly the one who *decides*;** the Strategist only proposes
-  and explains. Promotions show the validation evidence. Keep the
-  "simulated · not evidence of edge" line. This *is* the loop invariant made
-  visible — LLM steers, math decides.
-- [ ] **Works without the LLM:** when Ollama is absent, the **templated
-  narrator** produces the same plain-language messages — the participants
-  still "speak," just from templates. The feed is never empty or broken.
-- [ ] **Accountability + control:** the human can **pause / kill** right
-  from this view (the research's "intervention point"); kill and de-risk
-  events appear as messages too.
-- [ ] **Source + replay:** built from the existing `NarrationEvent` +
-  autonomy events in the audit log via `StateReader`. Because runs are
-  deterministic, a **timeline scrubber replays the entire conversation** of
-  any past session, exactly.
-- **Tests:** every autonomy event yields a readable message; the feed
-  reproduces deterministically on replay; it works with the LLM absent
-  (templated); no raw JSON/stdout in the default view; only the
-  Judge/Validator can emit a "validated" verdict (matches the safety
-  model); pause/kill reachable from the feed.
-- **Exit gate:** you can watch the LLM ↔ ML ↔ autopilot converse in plain
-  English, live and on replay, honestly. `git tag m21-done`.
+**Scope note:** this feed is *added alongside* the existing Intel
+decision-cards view (M9), on `/intel`, not a replacement for it — the
+cards remain a useful per-hypothesis summary; the new feed is the
+turn-by-turn "watch them talk" experience this milestone asks for. Both
+read the same audit events honestly, from the same `StateReader`.
+
+- [x] A **conversation/timeline feed** (new `StateReader.conversation()` /
+  `ConversationMessage`/`ConversationPayload`) rendered as a readable
+  dialogue between named participants: **Strategist** (`HypothesisEvent`)
+  · **Optimizer** (`TrialEvent`s aggregated into one card per hypothesis —
+  "Ran N trials — best Sharpe X (params)", never one message per trial) ·
+  **Judge** (`ValidationEvent`) · **Autopilot** (`NarrationEvent`) ·
+  **Risk** (`ControlEvent`/`DeRiskEvent`). Verified against a **real**
+  autopilot campaign (offline CSV bundle, `lqe autopilot --steps 3
+  --trials 5`): produced exactly this dialogue shape with real numbers
+  ("Ran 5 trials — best Sharpe -27.68 (fast=10, slow=22)", "✗ FAIL — DSR
+  0.05, PBO 0.00, doesn't survive costs; doesn't beat equal-weight").
+- [x] **Color-coded by participant**, verdict-driven for the Judge:
+  Strategist/Optimizer/Autopilot/Risk get fixed hues (`--intel`/`--mute`/
+  `--amber`/`--short`); the Judge's card carries a `verdict` field so its
+  color is long/short **by outcome**, not a fixed hue (tested: only Judge
+  messages ever carry a verdict). **No code, no JSON, no cryptic IDs** in
+  the default text (`hypo_id`/`candidate_id`/`trial_id` are internal
+  grouping keys only, never rendered) — a native `<details><summary>
+  Details</summary>` discloses the Judge's evidence dict as plain `k: v`
+  lines, never raw JSON, for power users.
+- [x] **Honesty is structural:** promotion messages are attributed to the
+  **Judge**, not the Strategist or Autopilot ("the Judge is visibly the
+  one who decides") — tested explicitly. The existing honesty banner/
+  shield is unchanged.
+- [x] **Works without the LLM:** `conversation()` reads `NarrationEvent
+  .text` as-is, regardless of which narrator (RuleBased or Ollama) wrote
+  it — no LLM-specific branch exists, so the feed is identical whether or
+  not Ollama is running.
+- [x] **Accountability + control:** the status rail (KILL + AUTOPILOT
+  toggle) renders on every page via `base.html`, Intel included — no new
+  code needed, just confirmed and tested. Kill and de-risk events appear
+  as their own **Risk**-attributed messages in the feed.
+- [x] **Source + replay:** new `GET /api/conversation?at_seq=` mirrors
+  `/api/graph`'s exact deterministic-replay pattern; a new `#convo-
+  scrubber` timeline control (same UX as the Engine 3D view's scrubber)
+  replays the conversation exactly as it was at any past `seq` — verified
+  live that scrubbing to `at_seq=5` mid-campaign correctly showed a
+  partial "4 trials" Optimizer summary instead of the final "5 trials".
+- **Tests:** ✅ `tests/unit/test_state_reader.py` (+10: a hand-built full-
+  loop audit log covering every participant + trial-aggregation-picks-
+  the-best-not-each-one + Judge-only-carries-verdict + kill/de-risk-as-
+  messages + promotion-attributed-to-Judge + deterministic at_seq replay
+  + no-JSON/no-cryptic-IDs + templated-narration-without-LLM + empty-log
+  handling) · `tests/integration/test_ui_conversation.py` (8: the feed +
+  scrubber render, the empty state, the existing cards section is
+  untouched, the `/api/conversation` contract + `at_seq` replay, pause/
+  kill reachable) · `tests/honesty/test_ui_honesty.py` extended to cover
+  `/intel` (was an existing gap since M9, closed here) · full existing
+  `tests/safety/`+`tests/honesty/` suites unchanged and green. **Verified
+  live** against a real `lqe autopilot` campaign (not a synthetic
+  fixture): ingested + built a real replay bundle, ran 3 real hypothesis
+  cycles, served the resulting audit log via `lqe desk`, and confirmed
+  the rendered feed, the scrubber's deterministic mid-campaign replay,
+  and the kill control all worked end to end.
+- **Exit gate:** ✅ full suite green (409 tests, 8 correctly skipped) +
+  ruff + mypy + license gate green; `git tag m21-done`.
 
 ## M22 — v3 hardening, review & tag  · M · Dep: all
 - [ ] Extend `tests/safety` + `tests/honesty` to the new surfaces

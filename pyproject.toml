@@ -1,0 +1,78 @@
+[project]
+name = "lightweight-quant-engine"
+version = "0.0.0"
+description = "Local, paper-only, autonomous quant-research simulator."
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2",       # MIT — config/schema validation, events
+  "structlog",         # Apache-2.0/MIT — structured audit logging
+]
+
+# The full stack from docs/07 (Cost, Stack & Local LLM) lands milestone-by-milestone
+# as the modules that need it are built. Declared here for reference/pin-planning;
+# not imported by src/lqe until its owning milestone.
+[project.optional-dependencies]
+data = [
+  "ccxt",              # MIT — crypto market data (public endpoints only, M2)
+  "duckdb",            # MIT — local OLAP over Parquet (M2)
+  "polars",            # MIT — fast dataframes (M2)
+  "pyarrow",           # Apache-2.0 — Parquet/Arrow (M2)
+  "pandas",            # BSD-3 (M2)
+  "numpy",             # BSD-3 (M2)
+]
+models = [
+  "pandas-ta",         # MIT — indicators (M3/M6)
+  "statsmodels",       # BSD-3 — pairs/cointegration (M11)
+  "arch",              # NCSA — GARCH (M11)
+  "hmmlearn",          # BSD-3 — regime detection (M11)
+  "ruptures",          # BSD-2 — change-point detection (M11)
+  "skfolio",           # BSD-3 — portfolio optimization (M6/M11)
+  "PyPortfolioOpt",    # MIT — portfolio optimization (M6)
+  "riskfolio-lib",     # BSD-3 — risk allocation (M6)
+  "scikit-learn",      # BSD-3 — supervised signals/meta-labeling (M11)
+  "lightgbm",          # MIT — gradient boosting (M11)
+  "river",             # BSD-3 — online learning / drift monitor (M8)
+]
+search = [
+  "optuna",            # MIT — hyperparameter search (M8)
+]
+ui = [
+  "fastapi",           # MIT — localhost API (M7)
+  "nicegui",           # MIT — localhost GUI (M7)
+]
+dev = [
+  "pytest",
+  "hypothesis",
+  "ruff",
+  "mypy",
+  "pip-licenses",
+  "pre-commit",
+]
+
+[project.scripts]
+lqe = "lqe.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+src = ["src", "tests"]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+explicit_package_bases = true
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

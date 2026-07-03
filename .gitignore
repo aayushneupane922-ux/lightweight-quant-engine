@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+
+# local data & run artifacts (never commit market data or audit logs)
+data/
+runs/
+*.duckdb
+*.parquet
+*.jsonl
+
+# secrets — there are NONE in the MVP; keep it that way
+.env
+*.key

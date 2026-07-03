@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Neural Engine — Holo Lattice</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+ :root{--cyan:#35F0E8;--mag:#F45BD0;--mute:#5E7387}
+ *{margin:0;padding:0;box-sizing:border-box}
+ html,body{height:100%;background:#05070C;overflow:hidden;font-family:Inter,system-ui,sans-serif;color:#DCF5F4}
+ #c{position:fixed;inset:0;display:block}
+ .hud{position:fixed;z-index:5;pointer-events:none}
+ .top{top:0;left:0;right:0;display:flex;align-items:center;gap:16px;padding:13px 20px}
+ .brand{font-weight:600;letter-spacing:.2em;font-size:12px}.brand b{color:var(--cyan)}
+ .seg{color:var(--mute);font-size:11px;font-family:"JetBrains Mono",monospace}.spacer{flex:1}
+ .auto{color:var(--mag);border:1px solid var(--mag);border-radius:4px;padding:4px 10px;font-size:10.5px;letter-spacing:.14em;font-weight:600}
+ .shield{border:1px solid var(--cyan);color:var(--cyan);border-radius:4px;padding:4px 9px;font-size:10.5px;letter-spacing:.16em;font-weight:600}
+ .honesty{bottom:0;left:0;right:0;text-align:center;padding:12px;font-size:10.5px;letter-spacing:.1em;color:#6fd7d2}
+ .honesty b{color:var(--cyan)}
+</style></head><body>
+<canvas id="c"></canvas>
+<div class="hud top"><span class="brand">NEURAL <b>ENGINE</b> · HOLO-LATTICE</span><span class="seg">MODELS 31 · SYNC 100%</span><span class="spacer"></span><span class="auto">◉ AUTOPILOT</span><span class="shield">PAPER · LOCKED</span></div>
+<div class="hud honesty"><b>SIMULATED</b> · holographic projection of the model manifold — magenta nodes are active this bar</div>
+<script>
+(function(){
+ var cv=document.getElementById('c'),ctx=cv.getContext('2d'),W,H,MIN,cx,cy,dpr;
+ function fit(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);MIN=Math.min(W,H);cx=W/2;cy=H/2;}
+ addEventListener('resize',fit);fit();
+ function hx(h,a){var n=parseInt(h.slice(1),16);return'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')';}
+ var N=92,pts=[],gold=Math.PI*(3-Math.sqrt(5));
+ for(var i=0;i<N;i++){var y=1-(i/(N-1))*2,rad=Math.sqrt(1-y*y),th=gold*i;pts.push({x:Math.cos(th)*rad,y:y,z:Math.sin(th)*rad,act:Math.random()<0.17,ph:Math.random()*6.28});}
+ var edges=[],seen={};
+ for(var i=0;i<N;i++){var ds=[];for(var j=0;j<N;j++)if(j!==i){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,dz=pts[i].z-pts[j].z;ds.push([dx*dx+dy*dy+dz*dz,j]);}ds.sort(function(a,b){return a[0]-b[0];});
+  for(var k=0;k<3;k++){var j=ds[k][1],key=i<j?i+'_'+j:j+'_'+i;if(!seen[key]){seen[key]=1;edges.push([i,j]);}}}
+ var last=performance.now();
+ function frame(now){requestAnimationFrame(frame);var dt=Math.min((now-last)/1000,.05);last=now;var t=now/1000;
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#05070C';ctx.fillRect(0,0,W,H);
+  var Rp=0.34*MIN,A=t*0.24,T=0.42,ca=Math.cos(A),sa=Math.sin(A),ctl=Math.cos(T),stl=Math.sin(T);
+  var pr=pts.map(function(p){var x=p.x*ca+p.z*sa,z=-p.x*sa+p.z*ca,y=p.y;var y2=y*ctl-z*stl,z2=y*stl+z*ctl;
+   return{x:cx+x*Rp,y:cy+y2*Rp,d:(z2+1)/2};});
+  // HUD rings + ticks
+  ctx.globalCompositeOperation='lighter';
+  ctx.strokeStyle=hx('#35F0E8',.12);ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx,cy,Rp*1.16,0,6.2832);ctx.stroke();
+  ctx.strokeStyle=hx('#35F0E8',.20);ctx.beginPath();ctx.arc(cx,cy,Rp*1.30,-1.1,1.1);ctx.stroke();
+  ctx.strokeStyle=hx('#F45BD0',.18);ctx.beginPath();ctx.arc(cx,cy,Rp*1.30,Math.PI-0.7,Math.PI+0.7);ctx.stroke();
+  for(var k=0;k<60;k++){var ta=k/60*6.2832+t*0.15;var r1=Rp*1.34,r2=Rp*(k%5===0?1.40:1.37);ctx.strokeStyle=hx('#35F0E8',.16);ctx.beginPath();ctx.moveTo(cx+Math.cos(ta)*r1,cy+Math.sin(ta)*r1);ctx.lineTo(cx+Math.cos(ta)*r2,cy+Math.sin(ta)*r2);ctx.stroke();}
+  // lattice
+  edges.forEach(function(e){var a=pr[e[0]],b=pr[e[1]];var fr=(a.d+b.d)/2;ctx.strokeStyle=hx('#35F0E8',.06+fr*.28);ctx.lineWidth=.6+fr*.9;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();});
+  // nodes
+  pts.forEach(function(p,i){var q=pr[i];var col=p.act?'#F45BD0':'#35F0E8';var pulse=p.act?(1+Math.sin(t*3+p.ph)*.5):1;var rr=(1.5+q.d*2.6)*(MIN/900)*8*pulse/8;
+   var g=ctx.createRadialGradient(q.x,q.y,0,q.x,q.y,rr*3.5);g.addColorStop(0,hx(col,(.25+q.d*.5)*(p.act?1:.7)));g.addColorStop(1,hx(col,0));ctx.fillStyle=g;ctx.beginPath();ctx.arc(q.x,q.y,rr*3.5,0,6.2832);ctx.fill();});
+  ctx.globalCompositeOperation='source-over';
+  pts.forEach(function(p,i){var q=pr[i];var col=p.act?'#F45BD0':'#DCF5F4';var rr=(1.2+q.d*2.2)*(MIN/900)*7/7;ctx.fillStyle=hx(col,.4+q.d*.55);ctx.beginPath();ctx.arc(q.x,q.y,rr,0,6.2832);ctx.fill();});
+  // scanline
+  var sy=((t*0.12)%1)*H;var g=ctx.createLinearGradient(0,sy-40,0,sy+40);g.addColorStop(0,hx('#35F0E8',0));g.addColorStop(.5,hx('#35F0E8',.05));g.addColorStop(1,hx('#35F0E8',0));ctx.fillStyle=g;ctx.fillRect(0,sy-40,W,80);
+  // corner brackets
+  ctx.strokeStyle=hx('#35F0E8',.35);ctx.lineWidth=1.5;var m=26,L=18;[[m,m,1,1],[W-m,m,-1,1],[m,H-m,1,-1],[W-m,H-m,-1,-1]].forEach(function(c){ctx.beginPath();ctx.moveTo(c[0],c[1]+c[3]*L);ctx.lineTo(c[0],c[1]);ctx.lineTo(c[0]+c[2]*L,c[1]);ctx.stroke();});
+ }requestAnimationFrame(frame);
+})();
+</script></body></html>

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBSIDIAN DESK — Model Floor (mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#07090D; --desk:#0E131B; --slab:#131A24; --ridge:#1E2836;
+    --ink:#E9EEF5; --mute:#6B7A90; --amber:#F0A62A;
+    --long:#35C08B; --short:#F0524D; --intel:#7C7BF2;
+    --ui:"Inter",system-ui,sans-serif; --data:"JetBrains Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--void);color:var(--ink);font-family:var(--ui);font-size:13px;
+    -webkit-font-smoothing:antialiased;height:100vh;overflow:hidden}
+  .mono{font-family:var(--data);font-variant-numeric:tabular-nums}
+  .app{display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+
+  /* ---------- STATUS RAIL ---------- */
+  .rail{display:flex;align-items:center;gap:22px;padding:9px 16px;background:var(--slab);
+    border-bottom:1px solid var(--ridge)}
+  .brand{font-weight:600;letter-spacing:.14em;font-size:12px}
+  .brand b{color:var(--amber)}
+  .rail .dot{width:7px;height:7px;border-radius:50%;background:var(--long);
+    box-shadow:0 0 8px var(--long);display:inline-block;margin-right:6px}
+  .rail .seg{color:var(--mute);font-size:11px;letter-spacing:.04em}
+  .rail .seg b{color:var(--ink);font-weight:500}
+  .rail .spacer{flex:1}
+  .shield{border:1px solid var(--amber);color:var(--amber);border-radius:3px;
+    padding:4px 9px;font-size:10.5px;letter-spacing:.16em;font-weight:600}
+  .stat{display:flex;flex-direction:column;line-height:1.2}
+  .stat .k{color:var(--mute);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase}
+  .stat .v{font-size:14px}
+  .pos{color:var(--long)} .neg{color:var(--short)}
+  .kill{background:transparent;border:1px solid var(--short);color:var(--short);
+    font-family:var(--ui);font-weight:600;letter-spacing:.14em;font-size:11px;
+    padding:7px 14px;border-radius:3px;cursor:pointer}
+  .kill:hover{background:rgba(240,82,77,.12)}
+
+  /* ---------- BODY ---------- */
+  .body{display:grid;grid-template-columns:64px 1fr 320px;min-height:0}
+
+  /* mode spine */
+  .spine{background:var(--desk);border-right:1px solid var(--ridge);
+    display:flex;flex-direction:column;padding:12px 0;gap:4px}
+  .mode{display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 0;
+    color:var(--mute);cursor:pointer;border-left:2px solid transparent;font-size:9.5px;
+    letter-spacing:.05em}
+  .mode .ic{font-size:16px}
+  .mode.active{color:var(--amber);border-left-color:var(--amber);background:rgba(240,166,42,.06)}
+  .mode:hover:not(.active){color:var(--ink)}
+  .mode .fk{font-family:var(--data);font-size:8px;color:var(--mute);opacity:.7}
+
+  /* floor */
+  .floor{padding:14px 16px;overflow:auto;min-height:0}
+  .floor-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px}
+  .floor-head h1{font-size:15px;font-weight:600;letter-spacing:.01em}
+  .floor-head .sub{color:var(--mute);font-size:11px}
+  .honesty{background:rgba(124,123,242,.07);border:1px solid rgba(124,123,242,.28);
+    color:#b9b6f7;border-radius:3px;padding:6px 10px;font-size:10.5px;letter-spacing:.03em;
+    margin:8px 0 14px;display:flex;gap:8px;align-items:center}
+  .honesty .tag{color:var(--intel);font-weight:600;letter-spacing:.1em}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:10px}
+
+  .cell{position:relative;background:var(--slab);border:1px solid var(--ridge);
+    border-radius:5px;padding:12px 12px 11px;overflow:hidden}
+  .cell::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--intel)}
+  .cell.i-hi::before{opacity:.95}.cell.i-md::before{opacity:.5}.cell.i-lo::before{opacity:.16}
+  .cell .top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px}
+  .cell .name{font-weight:600;font-size:12.5px;display:flex;gap:6px;align-items:center}
+  .cell .glyph{color:var(--mute);font-size:12px}
+  .cell .fam{color:var(--mute);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+  .badge{font-family:var(--data);font-size:9px;font-weight:700;letter-spacing:.1em;
+    padding:3px 6px;border-radius:3px}
+  .b-armed{color:var(--mute);border:1px solid var(--ridge)}
+  .b-long{color:var(--long);border:1px solid rgba(53,192,139,.45);background:rgba(53,192,139,.08)}
+  .b-short{color:var(--short);border:1px solid rgba(240,82,77,.45);background:rgba(240,82,77,.08)}
+  .b-fired{color:var(--amber);border:1px solid rgba(240,166,42,.5);background:rgba(240,166,42,.1)}
+  .b-halt{color:var(--short);border:1px solid rgba(240,82,77,.45)}
+  .stance{height:4px;background:var(--ridge);border-radius:2px;position:relative;margin:2px 0 11px}
+  .stance i{position:absolute;top:0;bottom:0;width:1px;left:50%;background:var(--mute);opacity:.6}
+  .stance b{position:absolute;top:0;bottom:0;border-radius:2px;display:block}
+  .row{display:flex;justify-content:space-between;align-items:flex-end}
+  .kv .k{color:var(--mute);font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+  .kv .v{font-size:13px}
+  .spark{opacity:.9}
+  .foot{display:flex;justify-content:space-between;margin-top:9px;padding-top:8px;
+    border-top:1px solid var(--ridge);color:var(--mute);font-size:9.5px;letter-spacing:.03em}
+  .verdict{font-weight:600}
+  .v-obs{color:var(--mute)} .v-surv{color:var(--amber)} .v-no{color:var(--short)} .v-val{color:var(--long)}
+
+  /* inspector */
+  .insp{background:var(--desk);border-left:1px solid var(--ridge);padding:14px;overflow:auto;min-height:0}
+  .insp h2{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--intel);
+    margin-bottom:10px;display:flex;align-items:center;gap:7px}
+  .insp h2::before{content:"◇";font-size:11px}
+  .narr{background:var(--slab);border:1px solid var(--ridge);border-left:2px solid var(--intel);
+    border-radius:4px;padding:11px;font-size:12px;line-height:1.5;color:#c7ccd6}
+  .narr b{color:var(--ink);font-weight:600}
+  .narr .cite{color:var(--intel)}
+  .mtx{margin-top:16px}
+  .mtx table{width:100%;border-collapse:collapse;font-size:10px}
+  .mtx th{color:var(--mute);font-weight:500;text-align:right;padding:5px 5px;font-size:9px;
+    letter-spacing:.05em}
+  .mtx th:first-child{text-align:left}
+  .mtx td{text-align:right;padding:5px;font-family:var(--data);border-top:1px solid var(--ridge)}
+  .mtx td:first-child{text-align:left;font-family:var(--ui);color:var(--ink)}
+  .heat{border-radius:2px;padding:2px 6px}
+  .lowN{color:var(--mute);opacity:.5}
+  .tag-unproven{font-family:var(--data);font-size:8.5px;color:var(--mute);border:1px solid var(--ridge);
+    padding:1px 5px;border-radius:3px;letter-spacing:.08em}
+
+  /* tape */
+  .tape{background:var(--slab);border-top:1px solid var(--ridge);height:118px;overflow:auto}
+  .tape-h{display:flex;align-items:center;gap:10px;padding:7px 14px;color:var(--mute);
+    font-size:10px;letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid var(--ridge)}
+  .tape-h .pill{margin-left:auto;font-family:var(--data);color:var(--mute);border:1px solid var(--ridge);
+    border-radius:10px;padding:2px 9px;font-size:9px;letter-spacing:.05em}
+  .tr{display:grid;grid-template-columns:88px 92px 150px 1fr auto;gap:10px;align-items:center;
+    padding:6px 14px;border-bottom:1px solid rgba(30,40,54,.5);font-size:11px}
+  .tr .t{font-family:var(--data);color:var(--mute);font-size:10.5px}
+  .tr .ic{font-family:var(--data);font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 6px;border-radius:3px;text-align:center}
+  .tr .m{color:var(--ink)}
+  .tr .d{color:var(--mute)}
+  .tr .n{font-family:var(--data);color:var(--mute)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- STATUS RAIL -->
+  <div class="rail">
+    <span class="brand">OBSIDIAN <b>DESK</b></span>
+    <span class="seg"><span class="dot"></span><b>LIVE</b> · binance</span>
+    <span class="seg mono">UTC 14:30:07</span>
+    <span class="seg">feed <b>BTC-USDT · 1m</b></span>
+    <span class="spacer"></span>
+    <span class="stat"><span class="k">Session P/L (sim)</span><span class="v mono pos">+0.42%</span></span>
+    <span class="stat"><span class="k">Exposure</span><span class="v mono">0.58×</span></span>
+    <span class="stat"><span class="k">Drawdown</span><span class="v mono neg">−1.9%</span></span>
+    <span class="shield">PAPER · LIVE LOCKED</span>
+    <button class="kill">KILL</button>
+  </div>
+
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- MODE SPINE -->
+    <div class="spine">
+      <div class="mode active"><span class="ic">▦</span>Floor<span class="fk">F1</span></div>
+      <div class="mode"><span class="ic">▤</span>Catalog<span class="fk">F2</span></div>
+      <div class="mode"><span class="ic">◑</span>Research<span class="fk">F3</span></div>
+      <div class="mode"><span class="ic">◇</span>Intel<span class="fk">F4</span></div>
+      <div class="mode"><span class="ic">⛉</span>Risk<span class="fk">F5</span></div>
+    </div>
+
+    <!-- MODEL FLOOR -->
+    <div class="floor">
+      <div class="floor-head">
+        <h1>Model Floor</h1>
+        <span class="sub">11 models · one live feed · simulated fills</span>
+      </div>
+      <div class="honesty"><span class="tag">SIMULATED</span> Live performance is <b>not</b> evidence of edge — sample is tiny. Ranking is sample-gated; send anything interesting to Research to validate.</div>
+
+      <div class="grid">
+
+        <!-- FIRED -->
+        <div class="cell i-hi">
+          <div class="top"><div><div class="name"><span class="glyph">╱</span>Donchian Breakout</div><div class="fam">trend · breakout</div></div><span class="badge b-fired">FIRED ▲</span></div>
+          <div class="stance"><i></i><b style="left:50%;right:22%;background:var(--long)"></b></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono pos">+2.1%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#35C08B" stroke-width="1.4" points="0,20 12,19 24,21 36,16 48,17 60,11 72,8 86,4"/></svg>
+          </div>
+          <div class="foot"><span>n=41 trades · 3.2h</span><span class="verdict v-surv">⚠ survives</span></div>
+        </div>
+
+        <!-- ARMED -->
+        <div class="cell i-md">
+          <div class="top"><div><div class="name"><span class="glyph">∿</span>MA Cross 12/48</div><div class="fam">trend</div></div><span class="badge b-armed">ARMED</span></div>
+          <div class="stance"><i></i></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono neg">−0.4%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#6B7A90" stroke-width="1.4" points="0,10 12,12 24,9 36,13 48,12 60,15 72,13 86,16"/></svg>
+          </div>
+          <div class="foot"><span>n=38 · watching</span><span class="verdict v-no">❌ no edge (costs)</span></div>
+        </div>
+
+        <!-- LONG -->
+        <div class="cell i-hi">
+          <div class="top"><div><div class="name"><span class="glyph">↗</span>TS-Momentum 96</div><div class="fam">momentum</div></div><span class="badge b-long">LONG</span></div>
+          <div class="stance"><i></i><b style="left:50%;right:12%;background:var(--long)"></b></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono pos">+1.4%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#35C08B" stroke-width="1.4" points="0,18 12,16 24,17 36,13 48,14 60,10 72,9 86,7"/></svg>
+          </div>
+          <div class="foot"><span>n=27 · 3.1h</span><span class="verdict v-obs">observing</span></div>
+        </div>
+
+        <!-- SHORT -->
+        <div class="cell i-md">
+          <div class="top"><div><div class="name"><span class="glyph">↘</span>Z-Score Reversion</div><div class="fam">mean-reversion</div></div><span class="badge b-short">SHORT</span></div>
+          <div class="stance"><i></i><b style="right:50%;left:20%;background:var(--short)"></b></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono pos">+0.7%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#35C08B" stroke-width="1.4" points="0,14 12,17 24,12 36,15 48,10 60,13 72,9 86,11"/></svg>
+          </div>
+          <div class="foot"><span>n=52 · 3.2h</span><span class="verdict v-obs">observing</span></div>
+        </div>
+
+        <!-- ARMED -->
+        <div class="cell i-lo">
+          <div class="top"><div><div class="name"><span class="glyph">≈</span>Bollinger Fade</div><div class="fam">mean-reversion</div></div><span class="badge b-armed">ARMED</span></div>
+          <div class="stance"><i></i></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono neg">−1.1%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#6B7A90" stroke-width="1.4" points="0,9 12,11 24,10 36,14 48,13 60,16 72,17 86,19"/></svg>
+          </div>
+          <div class="foot"><span>n=44 · watching</span><span class="verdict v-no">❌ no edge (costs)</span></div>
+        </div>
+
+        <!-- FIRED short -->
+        <div class="cell i-md">
+          <div class="top"><div><div class="name"><span class="glyph">⌁</span>MACD Trend</div><div class="fam">trend</div></div><span class="badge b-fired">FIRED ▼</span></div>
+          <div class="stance"><i></i><b style="right:50%;left:32%;background:var(--short)"></b></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono pos">+0.3%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#35C08B" stroke-width="1.4" points="0,15 12,14 24,16 36,12 48,13 60,12 72,10 86,11"/></svg>
+          </div>
+          <div class="foot"><span>n=31 · 3.0h</span><span class="verdict v-obs">observing</span></div>
+        </div>
+
+        <!-- Vol target LONG validated -->
+        <div class="cell i-hi">
+          <div class="top"><div><div class="name"><span class="glyph">◈</span>Vol-Target Overlay</div><div class="fam">volatility</div></div><span class="badge b-long">LONG</span></div>
+          <div class="stance"><i></i><b style="left:50%;right:30%;background:var(--long)"></b></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono pos">+0.9%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#35C08B" stroke-width="1.4" points="0,17 12,16 24,15 36,14 48,13 60,12 72,11 86,10"/></svg>
+          </div>
+          <div class="foot"><span>n=88 · graduated</span><span class="verdict v-val">★ validated</span></div>
+        </div>
+
+        <!-- Risk parity -->
+        <div class="cell i-md">
+          <div class="top"><div><div class="name"><span class="glyph">⊞</span>Risk Parity</div><div class="fam">portfolio</div></div><span class="badge b-armed">ARMED</span></div>
+          <div class="stance"><i></i></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono pos">+0.2%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#6B7A90" stroke-width="1.4" points="0,13 12,13 24,12 36,13 48,12 60,12 72,11 86,12"/></svg>
+          </div>
+          <div class="foot"><span>n=19 · <span class="lowN">low sample</span></span><span class="verdict v-obs">observing</span></div>
+        </div>
+
+        <!-- HRP -->
+        <div class="cell i-lo">
+          <div class="top"><div><div class="name"><span class="glyph">⋔</span>HRP Allocator</div><div class="fam">portfolio</div></div><span class="badge b-armed">ARMED</span></div>
+          <div class="stance"><i></i></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono">—</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#6B7A90" stroke-width="1.2" points="0,13 12,13 24,13 36,13 48,13 60,13 72,13 86,13"/></svg>
+          </div>
+          <div class="foot"><span class="lowN">insufficient data (n=6)</span><span class="tag-unproven">unproven</span></div>
+        </div>
+
+        <!-- Pairs HALTED -->
+        <div class="cell i-lo">
+          <div class="top"><div><div class="name"><span class="glyph">⇄</span>Pairs · ETH/BTC</div><div class="fam">stat-arb</div></div><span class="badge b-halt">HALTED ⛉</span></div>
+          <div class="stance"><i></i><b style="right:50%;left:8%;background:var(--short);opacity:.5"></b></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono neg">−3.4%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#F0524D" stroke-width="1.4" points="0,8 12,10 24,9 36,13 48,15 60,18 72,21 86,23"/></svg>
+          </div>
+          <div class="foot"><span>risk breach · daily loss</span><span class="verdict v-no">halted</span></div>
+        </div>
+
+        <!-- RSI -->
+        <div class="cell i-lo">
+          <div class="top"><div><div class="name"><span class="glyph">∼</span>RSI Fade</div><div class="fam">mean-reversion</div></div><span class="badge b-armed">ARMED</span></div>
+          <div class="stance"><i></i></div>
+          <div class="row">
+            <div class="kv"><div class="k">Sim return</div><div class="v mono neg">−0.6%</div></div>
+            <svg class="spark" width="86" height="26" viewBox="0 0 86 26"><polyline fill="none" stroke="#6B7A90" stroke-width="1.4" points="0,11 12,12 24,11 36,13 48,14 60,13 72,15 86,14"/></svg>
+          </div>
+          <div class="foot"><span>n=36 · watching</span><span class="verdict v-obs">observing</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- INSPECTOR / INTELLIGENCE -->
+    <div class="insp">
+      <h2>Intelligence · Meta-Layer</h2>
+      <div class="narr">
+        <b>Breakout</b> conviction is rising as volatility expands; <b>mean-reversion</b> models are fading in the same regime — the two are <b class="cite">−0.6 correlated</b> right now.
+        Historically this pairing has <b>not</b> generalized out-of-sample (PBO 0.71).
+        <span class="cite">→ Send to Research before trusting it.</span>
+      </div>
+
+      <div class="mtx">
+        <h2 style="color:var(--mute);margin-top:18px">Who works when <span style="opacity:.6">(hist. conviction)</span></h2>
+        <table>
+          <tr><th>Model</th><th>Trend</th><th>Range</th><th>High-vol</th></tr>
+          <tr><td>Breakout</td><td><span class="heat" style="background:rgba(53,192,139,.28);color:#8fe3c0">0.71</span></td><td><span class="heat" style="background:rgba(240,82,77,.22);color:#f2938f">0.22</span></td><td><span class="heat" style="background:rgba(53,192,139,.20);color:#8fe3c0">0.58</span></td></tr>
+          <tr><td>Z-Reversion</td><td><span class="heat" style="background:rgba(240,82,77,.22);color:#f2938f">0.19</span></td><td><span class="heat" style="background:rgba(53,192,139,.26);color:#8fe3c0">0.64</span></td><td class="lowN">n=12</td></tr>
+          <tr><td>TS-Momentum</td><td><span class="heat" style="background:rgba(53,192,139,.22);color:#8fe3c0">0.60</span></td><td><span class="heat" style="background:rgba(240,82,77,.18);color:#f2938f">0.31</span></td><td class="lowN">n=9</td></tr>
+          <tr><td>Vol-Target</td><td><span class="heat" style="background:rgba(53,192,139,.18)">0.52</span></td><td><span class="heat" style="background:rgba(53,192,139,.16)">0.49</span></td><td><span class="heat" style="background:rgba(53,192,139,.24);color:#8fe3c0">0.63</span></td></tr>
+        </table>
+        <div style="color:var(--mute);font-size:9.5px;margin-top:10px;line-height:1.5">
+          Meta-model v7 · frozen · offline-fit (purged CV). Beats equal-weight OOS? <span style="color:var(--short)">Not yet.</span> Observation-only — influences no orders.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAPE (structured, not a CLI log) -->
+  <div class="tape">
+    <div class="tape-h">Tape · events<span class="pill">structured · not a console</span></div>
+    <div class="tr"><span class="t">14:30:06</span><span class="ic b-fired">FIRE</span><span class="m">Donchian Breakout</span><span class="d">signal LONG · conviction 0.71</span><span class="n">→ risk: APPROVE</span></div>
+    <div class="tr"><span class="t">14:30:06</span><span class="ic b-long">FILL</span><span class="m">Donchian Breakout</span><span class="d">0.014 BTC @ 61,240 · sim</span><span class="n">fee 0.25bp · slip 8bp</span></div>
+    <div class="tr"><span class="t">14:29:58</span><span class="ic b-halt">HALT</span><span class="m">Pairs · ETH/BTC</span><span class="d">daily-loss breach −3.4%</span><span class="n">risk: REJECT + halt</span></div>
+    <div class="tr"><span class="t">14:29:41</span><span class="ic b-short">FILL</span><span class="m">Z-Score Reversion</span><span class="d">−0.02 BTC @ 61,190 · sim</span><span class="n">fee 0.25bp</span></div>
+  </div>
+</div>
+</body>
+</html>

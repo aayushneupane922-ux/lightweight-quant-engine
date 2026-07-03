@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBSIDIAN DESK — Neural Engine (2D · no libraries)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--void:#07090D;--ink:#E9EEF5;--mute:#6B7A90;--amber:#F0A62A;--long:#35C08B;--short:#F0524D;--intel:#7C7BF2;--ridge:#1E2836;
+    --ui:"Inter",system-ui,sans-serif;--data:"JetBrains Mono",monospace}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:var(--void);overflow:hidden;font-family:var(--ui);color:var(--ink)}
+  #c{position:fixed;inset:0;display:block}
+  .hud{position:fixed;pointer-events:none;z-index:5}
+  .top{top:0;left:0;right:0;display:flex;align-items:center;gap:18px;padding:12px 18px;background:linear-gradient(180deg,rgba(7,9,13,.92),rgba(7,9,13,0))}
+  .brand{font-weight:600;letter-spacing:.16em;font-size:12px}.brand b{color:var(--amber)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--long);display:inline-block;margin-right:6px;box-shadow:0 0 8px var(--long)}
+  .seg{color:var(--mute);font-size:11px}.seg b{color:var(--ink);font-weight:500}.spacer{flex:1}
+  .auto{color:var(--amber);border:1px solid var(--amber);border-radius:3px;padding:4px 10px;font-size:10.5px;letter-spacing:.14em;font-weight:600}
+  .shield{border:1px solid var(--amber);color:var(--amber);border-radius:3px;padding:4px 9px;font-size:10.5px;letter-spacing:.16em;font-weight:600}
+  .legend{top:64px;left:18px;font-size:11px;line-height:1.9;background:rgba(14,19,27,.55);border:1px solid var(--ridge);border-radius:6px;padding:11px 13px}
+  .legend .h{color:var(--mute);font-size:9px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:5px}
+  .legend .r{display:flex;align-items:center;gap:8px;color:#c7ccd6}.swatch{width:9px;height:9px;border-radius:50%;flex:none}
+  .honesty{bottom:0;left:0;right:0;text-align:center;padding:10px;font-size:10.5px;letter-spacing:.08em;color:#b9b6f7;background:linear-gradient(0deg,rgba(7,9,13,.92),rgba(7,9,13,0))}
+  .honesty b{color:var(--intel)}
+  .stat{font-family:var(--data);color:var(--ink)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud top">
+  <span class="brand">OBSIDIAN <b>DESK</b> · NEURAL ENGINE</span>
+  <span class="seg"><span class="dot"></span><b>LIVE</b> · simulated</span>
+  <span class="seg">no libraries — pure canvas</span>
+  <span class="spacer"></span>
+  <span class="auto">◉ AUTOPILOT ON</span>
+  <span class="shield">PAPER · LIVE LOCKED</span>
+</div>
+<div class="hud legend">
+  <div class="h">Nodes</div>
+  <div class="r"><span class="swatch" style="background:#35C08B"></span>tracked model (validated)</div>
+  <div class="r"><span class="swatch" style="background:#6B7A90"></span>sandbox experiment</div>
+  <div class="r"><span class="swatch" style="background:#7C7BF2"></span>meta-layer / LLM</div>
+  <div class="r"><span class="swatch" style="background:#F0A62A"></span>regime · promotion</div>
+</div>
+<div class="hud honesty"><b>SIMULATED</b> · telemetry only — bright core = validated tracked book · dim ring = unvalidated sandbox</div>
+
+<script>
+(function(){
+  const C={ink:'#E9EEF5',mute:'#6B7A90',amber:'#F0A62A',long:'#35C08B',short:'#F0524D',intel:'#7C7BF2',void:'#07090D'};
+  const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+  let W,H,dpr,cx,cy,scale;
+  function size(){dpr=Math.min(window.devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);cx=W/2;cy=H/2+10;scale=Math.min(W,H)/900;}
+  addEventListener('resize',size);size();
+  const rnd=(a,b)=>a+Math.random()*(b-a);
+
+  // nodes: polar base (ring radius + angle), depth via sin for 2.5D
+  const nodes=[];
+  function mk(ring,ang,r,color,kind){nodes.push({ring,ang,base:ang,r,color,kind,ph:Math.random()*6.28});}
+  const tc=[C.long,C.long,C.amber,C.long,C.short];
+  for(let i=0;i<5;i++)mk(150,i/5*6.28,rnd(11,16),tc[i],'tracked');
+  mk(0,0,20,C.intel,'meta'); const meta=nodes[nodes.length-1]; meta.fixed={x:-0.32,y:-0.16};
+  for(let i=0;i<3;i++)mk(300,rnd(1.7,2.6),rnd(8,11),C.amber,'regime');
+  for(let i=0;i<26;i++){const c=Math.random()<0.2?(Math.random()<0.5?C.long:C.short):C.mute;mk(rnd(330,470),Math.random()*6.28,rnd(4,7),c,'sandbox');}
+
+  function pos(n,t){
+    if(n.fixed) return {x:cx+n.fixed.x*Math.min(W,H),y:cy+n.fixed.y*Math.min(W,H),d:1};
+    const spin=t*(n.kind==='sandbox'?0.06:0.12)*(n.ring>250?-1:1);
+    const a=n.base+spin;
+    const x=cx+Math.cos(a)*n.ring*scale;
+    const y=cy+Math.sin(a)*n.ring*scale*0.5;      // vertical squash → orbit look
+    const d=0.55+0.45*Math.sin(a);                 // depth (front brighter/bigger)
+    return {x,y,d};
+  }
+  // edges (index pairs)
+  const E=[]; const idxT=[0,1,2,3,4], idxMeta=5, idxR=[6,7,8];
+  for(let i=0;i<idxT.length;i++)for(let j=i+1;j<idxT.length;j++)if(Math.random()<0.65)E.push([idxT[i],idxT[j],Math.random()<0.6?C.long:C.short,0.22]);
+  idxT.forEach(t=>E.push([idxMeta,t,C.intel,0.30]));
+  for(let k=9;k<nodes.length;k++)if(Math.random()<0.45)E.push([idxMeta,k,C.intel,0.09]);
+  idxR.forEach(r=>idxT.forEach(t=>{if(Math.random()<0.5)E.push([r,t,C.amber,0.12]);}));
+  const pulses=E.filter(e=>e[2]===C.intel||e[2]===C.amber).map(e=>({e,t:Math.random(),sp:rnd(0.25,0.55)}));
+
+  const promos=[];let pt=0;
+  function hex(h,a){const n=parseInt(h.slice(1),16);return`rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
+  function glow(x,y,r,color,a){const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,hex(color,a));g.addColorStop(1,hex(color,0));ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,6.2832);ctx.fill();}
+
+  let last=performance.now();
+  function frame(now){requestAnimationFrame(frame);const dt=(now-last)/1000;last=now;const t=now/1000;
+    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle=C.void;ctx.fillRect(0,0,W,H);
+    const P=nodes.map(n=>pos(n,t));
+    // edges
+    ctx.lineWidth=1;
+    E.forEach(e=>{const a=P[e[0]],b=P[e[1]];ctx.strokeStyle=hex(e[2],e[3]*(0.5+0.5*Math.min(a.d,b.d)));ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();});
+    // glow layer
+    ctx.globalCompositeOperation='lighter';
+    nodes.forEach((n,i)=>{const p=P[i];const rr=n.r*scale*(0.7+p.d*0.6);glow(p.x,p.y,rr*3.4,n.color,0.16*(0.5+p.d*0.5)*(1+Math.sin(t*(n.kind==='sandbox'?2:1.4)+n.ph)*0.25));});
+    // pulses
+    pulses.forEach(pu=>{pu.t+=pu.sp*dt;if(pu.t>1)pu.t=0;const a=P[pu.e[0]],b=P[pu.e[1]];const x=a.x+(b.x-a.x)*pu.t,y=a.y+(b.y-a.y)*pu.t;glow(x,y,7,pu.e[2],0.8);});
+    // promotions sandbox->tracked
+    pt+=dt;if(pt>1.4){pt=0;const f=9+((Math.random()*(nodes.length-9))|0),to=(Math.random()*5)|0;promos.push({f,to,t:0,sp:rnd(0.5,0.9)});}
+    for(let i=promos.length-1;i>=0;i--){const pr=promos[i];pr.t+=pr.sp*dt;if(pr.t>=1){promos.splice(i,1);continue;}const a=P[pr.f],b=P[pr.to];const x=a.x+(b.x-a.x)*pr.t,y=a.y+(b.y-a.y)*pr.t;glow(x,y,12,C.amber,0.9);}
+    ctx.globalCompositeOperation='source-over';
+    // cores
+    nodes.forEach((n,i)=>{const p=P[i];const rr=n.r*scale*(0.7+p.d*0.6)*(1+Math.sin(t*(n.kind==='sandbox'?2:1.4)+n.ph)*(n.kind==='sandbox'?0.12:0.2));
+      ctx.fillStyle=hex(n.color,0.35+p.d*0.55);ctx.beginPath();ctx.arc(p.x,p.y,rr,0,6.2832);ctx.fill();
+      ctx.fillStyle=hex('#FFFFFF',0.5*p.d);ctx.beginPath();ctx.arc(p.x,p.y,rr*0.4,0,6.2832);ctx.fill();});
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

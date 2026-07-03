@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBSIDIAN DESK — Neural Engine (3D)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{--void:#07090D;--ink:#E9EEF5;--mute:#6B7A90;--amber:#F0A62A;--long:#35C08B;--short:#F0524D;--intel:#7C7BF2;--ridge:#1E2836;
+    --ui:"Inter",system-ui,sans-serif;--data:"JetBrains Mono",monospace}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:var(--void);overflow:hidden;font-family:var(--ui);color:var(--ink)}
+  #c{position:fixed;inset:0;display:block}
+  .hud{position:fixed;pointer-events:none;z-index:5}
+  .top{top:0;left:0;right:0;display:flex;align-items:center;gap:18px;padding:12px 18px;background:linear-gradient(180deg,rgba(7,9,13,.9),rgba(7,9,13,0))}
+  .brand{font-weight:600;letter-spacing:.16em;font-size:12px}.brand b{color:var(--amber)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--long);display:inline-block;margin-right:6px;box-shadow:0 0 8px var(--long)}
+  .seg{color:var(--mute);font-size:11px;letter-spacing:.05em}.seg b{color:var(--ink);font-weight:500}
+  .spacer{flex:1}
+  .auto{color:var(--amber);border:1px solid var(--amber);border-radius:3px;padding:4px 10px;font-size:10.5px;letter-spacing:.14em;font-weight:600}
+  .shield{border:1px solid var(--amber);color:var(--amber);border-radius:3px;padding:4px 9px;font-size:10.5px;letter-spacing:.16em;font-weight:600}
+  .legend{top:64px;left:18px;font-size:11px;line-height:1.9;background:rgba(14,19,27,.55);border:1px solid var(--ridge);border-radius:6px;padding:11px 13px}
+  .legend .h{color:var(--mute);font-size:9px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:5px}
+  .legend .r{display:flex;align-items:center;gap:8px;color:#c7ccd6}
+  .swatch{width:9px;height:9px;border-radius:50%;flex:none}
+  .region{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
+  .r-sandbox{bottom:118px;left:42px;color:var(--mute)}.r-tracked{top:118px;right:60px;color:var(--long);text-align:right}
+  .region small{display:block;font-size:9px;letter-spacing:.04em;text-transform:none;color:var(--mute);margin-top:2px}
+  .narr{right:18px;top:64px;width:262px;background:rgba(14,19,27,.55);border:1px solid var(--ridge);border-left:2px solid var(--intel);border-radius:6px;padding:11px 13px}
+  .narr .h{color:var(--intel);font-size:9px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}
+  .narr p{font-size:11.5px;line-height:1.5;color:#c7ccd6}.narr .mono{font-family:var(--data);color:var(--intel)}
+  .honesty{bottom:0;left:0;right:0;text-align:center;padding:10px;font-size:10.5px;letter-spacing:.08em;color:#b9b6f7;background:linear-gradient(0deg,rgba(7,9,13,.92),rgba(7,9,13,0))}
+  .honesty b{color:var(--intel);letter-spacing:.12em}
+  .stat{font-family:var(--data);color:var(--ink)}
+  #fallback{position:fixed;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:40px;z-index:9}
+  #fallback div{max-width:420px;color:var(--mute);font-size:14px;line-height:1.6}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="fallback"><div>Couldn't start the 3D engine (WebGL or the three.js library didn't load).<br>Open this file in a desktop browser with an internet connection — or use <b style="color:#E9EEF5">neural-engine-2d.html</b>, which needs no libraries.</div></div>
+
+<div class="hud top">
+  <span class="brand">OBSIDIAN <b>DESK</b> · NEURAL ENGINE</span>
+  <span class="seg"><span class="dot"></span><b>LIVE</b> · simulated</span>
+  <span class="seg">models <b class="stat">31</b> · trials/min <b class="stat">54</b></span>
+  <span class="spacer"></span>
+  <span class="auto">◉ AUTOPILOT ON</span>
+  <span class="shield">PAPER · LIVE LOCKED</span>
+</div>
+<div class="hud legend">
+  <div class="h">Nodes</div>
+  <div class="r"><span class="swatch" style="background:#35C08B"></span>tracked model (validated)</div>
+  <div class="r"><span class="swatch" style="background:#6B7A90"></span>sandbox experiment</div>
+  <div class="r"><span class="swatch" style="background:#7C7BF2"></span>meta-layer / LLM</div>
+  <div class="r"><span class="swatch" style="background:#F0A62A"></span>regime · data feed</div>
+</div>
+<div class="hud narr">
+  <div class="h">◇ Meta-layer</div>
+  <p>Vol expanding — <span class="mono">breakout</span> conviction rising, <span class="mono">mean-reversion</span> fading. 3 hypotheses testing in the sandbox; 1 passed out-of-sample and was promoted.</p>
+</div>
+<div class="hud region r-sandbox">Sandbox<small>exploratory · unvalidated</small></div>
+<div class="hud region r-tracked">Tracked book<small>validated out-of-sample</small></div>
+<div class="hud honesty"><b>SIMULATED</b> · real system telemetry, not evidence of edge — the tracked core accepts only validated configs</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+function boot(){
+  if(typeof THREE==='undefined'){document.getElementById('fallback').style.display='flex';return;}
+  try{
+    const C={void:0x07090D,ink:0xE9EEF5,mute:0x6B7A90,amber:0xF0A62A,long:0x35C08B,short:0xF0524D,intel:0x7C7BF2};
+    const canvas=document.getElementById('c');
+    const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    renderer.setClearColor(C.void,1);
+    const scene=new THREE.Scene();
+    scene.fog=new THREE.FogExp2(C.void,0.0038);
+    const camera=new THREE.PerspectiveCamera(55,1,0.1,600);
+    camera.position.set(0,3,50);
+    const group=new THREE.Group();scene.add(group);
+    const rnd=(a,b)=>a+Math.random()*(b-a);
+    const addMat=(color,op)=>new THREE.MeshBasicMaterial({color,transparent:true,opacity:op,blending:THREE.AdditiveBlending,depthWrite:false});
+
+    // starfield so it never looks empty
+    const sg=new THREE.BufferGeometry(),sp=[];
+    for(let i=0;i<500;i++){sp.push(rnd(-120,120),rnd(-120,120),rnd(-160,60));}
+    sg.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
+    scene.add(new THREE.Points(sg,new THREE.PointsMaterial({color:C.mute,size:0.5,transparent:true,opacity:0.5})));
+
+    const nodes=[];
+    function node(x,y,z,color,r,kind){
+      const g=new THREE.Group();
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(r,20,20),new THREE.MeshBasicMaterial({color})));
+      g.add(new THREE.Mesh(new THREE.SphereGeometry(r*2.6,16,16),addMat(color,0.16)));
+      g.position.set(x,y,z);group.add(g);
+      nodes.push({mesh:g,phase:Math.random()*6.28,kind});return g;
+    }
+    const tracked=[],tc=[C.long,C.long,C.amber,C.long,C.short];
+    for(let i=0;i<5;i++){const a=i/5*6.28,R=rnd(5,9);tracked.push(node(Math.cos(a)*R,rnd(-3,5),Math.sin(a)*R-3,tc[i],rnd(1.7,2.5),'tracked'));}
+    const meta=node(-20,9,3,C.intel,2.6,'meta');
+    const regime=[];for(let i=0;i<3;i++)regime.push(node(rnd(12,20),rnd(-14,-6),rnd(-8,6),C.amber,rnd(1.1,1.5),'regime'));
+    const sandbox=[];
+    for(let i=0;i<24;i++){const a=Math.random()*6.28,b=Math.acos(rnd(-1,1)),R=rnd(18,30);
+      const x=R*Math.sin(b)*Math.cos(a),y=R*Math.cos(b)*0.6+2,z=R*Math.sin(b)*Math.sin(a)-3;
+      const c=Math.random()<0.2?(Math.random()<0.5?C.long:C.short):C.mute;
+      sandbox.push(node(x,y,z,c,rnd(0.7,1.1),'sandbox'));}
+
+    const edges=[];
+    function edge(a,b,color,op){const m=new THREE.LineBasicMaterial({color,transparent:true,opacity:op});
+      const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([a.position.clone(),b.position.clone()]),m);
+      group.add(line);edges.push({line,a,b,color});}
+    for(let i=0;i<tracked.length;i++)for(let j=i+1;j<tracked.length;j++)if(Math.random()<0.65)edge(tracked[i],tracked[j],Math.random()<0.6?C.long:C.short,rnd(0.14,0.32));
+    tracked.forEach(t=>edge(meta,t,C.intel,0.26));
+    sandbox.forEach(s=>{if(Math.random()<0.5)edge(meta,s,C.intel,0.08);});
+    regime.forEach(r=>tracked.forEach(t=>{if(Math.random()<0.4)edge(r,t,C.amber,0.1);}));
+
+    const pulses=[];
+    function pulse(e,color){const m=new THREE.Mesh(new THREE.SphereGeometry(0.5,10,10),addMat(color,0.9));group.add(m);pulses.push({m,e,t:Math.random(),speed:rnd(0.2,0.5)});}
+    edges.forEach(e=>{if((e.color===C.intel||e.color===C.amber)&&Math.random()<0.55)pulse(e,e.color);});
+
+    const promos=[];let pt=0;
+    function promo(){const f=sandbox[(Math.random()*sandbox.length)|0].position,to=tracked[(Math.random()*tracked.length)|0].position;
+      const m=new THREE.Mesh(new THREE.SphereGeometry(0.8,12,12),addMat(C.amber,1));group.add(m);
+      promos.push({m,f:f.clone(),to:to.clone(),t:0,speed:rnd(0.6,1.1)});}
+
+    const clock=new THREE.Clock();
+    function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
+    addEventListener('resize',resize);resize();
+    (function loop(){requestAnimationFrame(loop);const dt=clock.getDelta(),t=clock.elapsedTime;
+      group.rotation.y+=dt*0.09;group.rotation.x=Math.sin(t*0.1)*0.06;
+      nodes.forEach(n=>n.mesh.scale.setScalar(1+Math.sin(t*(n.kind==='sandbox'?2:1.4)+n.phase)*(n.kind==='sandbox'?0.14:0.2)));
+      pulses.forEach(p=>{p.t+=p.speed*dt;if(p.t>1)p.t=0;p.m.position.lerpVectors(p.e.a.position,p.e.b.position,p.t);});
+      pt+=dt;if(pt>1.5){pt=0;promo();}
+      for(let i=promos.length-1;i>=0;i--){const p=promos[i];p.t+=p.speed*dt;if(p.t>=1){group.remove(p.m);promos.splice(i,1);continue;}
+        p.m.position.lerpVectors(p.f,p.to,p.t);p.m.scale.setScalar(1+Math.sin(p.t*3.14)*0.8);}
+      renderer.render(scene,camera);})();
+  }catch(e){document.getElementById('fallback').style.display='flex';}
+}
+boot();
+</script>
+</body>
+</html>

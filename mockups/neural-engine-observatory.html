@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Neural Engine — Observatory</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+ :root{--gold:#E9C77E;--cyan:#7FD8E8;--mute:#4A5872}
+ *{margin:0;padding:0;box-sizing:border-box}
+ html,body{height:100%;background:#080A14;overflow:hidden;font-family:Inter,system-ui,sans-serif;color:#EDE8DA}
+ #c{position:fixed;inset:0;display:block}
+ .hud{position:fixed;z-index:5;pointer-events:none}
+ .top{top:0;left:0;right:0;display:flex;align-items:center;gap:16px;padding:14px 22px}
+ .brand{font-weight:500;letter-spacing:.26em;font-size:12px}.brand b{color:var(--gold);font-weight:500}
+ .seg{color:var(--mute);font-size:11px;font-family:"JetBrains Mono",monospace;letter-spacing:.05em}.spacer{flex:1}
+ .auto{color:var(--gold);border:1px solid rgba(233,199,126,.5);border-radius:2px;padding:4px 11px;font-size:10px;letter-spacing:.18em;font-weight:500}
+ .shield{color:var(--mute);border:1px solid rgba(74,88,114,.6);border-radius:2px;padding:4px 9px;font-size:10px;letter-spacing:.2em}
+ .honesty{bottom:0;left:0;right:0;text-align:center;padding:13px;font-size:10px;letter-spacing:.14em;color:#8a7f66}
+ .honesty b{color:var(--gold)}
+</style></head><body>
+<canvas id="c"></canvas>
+<div class="hud top"><span class="brand">NEURAL <b>ENGINE</b> &nbsp;·&nbsp; OBSERVATORY</span><span class="seg">31 MODELS · 6 CONSTELLATIONS</span><span class="spacer"></span><span class="auto">◉ AUTOPILOT</span><span class="shield">PAPER · LOCKED</span></div>
+<div class="hud honesty"><b>SIMULATED</b> &nbsp;·&nbsp; each constellation is a model family — gold comets mark validated promotions to the core</div>
+<script>
+(function(){
+ var cv=document.getElementById('c'),ctx=cv.getContext('2d'),W,H,MIN,cx,cy,dpr;
+ function fit(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);MIN=Math.min(W,H);cx=W/2;cy=H/2;}
+ addEventListener('resize',fit);fit();
+ var R=Math.random,rnd=function(a,b){return a+R()*(b-a);};
+ function hx(h,a){var n=parseInt(h.slice(1),16);return'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')';}
+ var G='#E9C77E',CY='#7FD8E8',WH='#F3F0E8';
+ var stars=[];for(var i=0;i<150;i++)stars.push({x:R(),y:R(),r:rnd(.3,1.1),a:rnd(.1,.5),ph:R()*6.28});
+ var nodes=[],edges=[];function mk(rf,a,r,c,k){nodes.push({rf:rf,a:a,r:r,c:c,k:k,ph:R()*6.28});return nodes.length-1;}
+ var core=mk(0,0,3.4,WH,'core');
+ for(var k=0;k<6;k++){var aA=k/6*6.2832+rnd(-.15,.15),aRf=rnd(.28,.42);var an=mk(aRf,aA,2.1,G,'anchor');edges.push([core,an]);
+  var mem=2+((R()*3)|0),prev=an;for(var m=0;m<mem;m++){var id=mk(aRf+rnd(-.07,.09),aA+rnd(-.30,.30),rnd(1,1.7),m%2?CY:G,'star');edges.push([prev,id]);if(R()<.4)edges.push([an,id]);prev=id;}}
+ function P(n,t){var a=n.a+t*0.03+Math.sin(t*0.3+n.ph)*0.02;return{x:cx+Math.cos(a)*n.rf*MIN,y:cy+Math.sin(a)*n.rf*MIN*0.72};}
+ function spark(x,y,s,c,a){ctx.strokeStyle=hx(c,a);ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(x-s,y);ctx.lineTo(x+s,y);ctx.moveTo(x,y-s);ctx.lineTo(x,y+s);ctx.stroke();}
+ var comets=[],cpt=0,last=performance.now();
+ function frame(now){requestAnimationFrame(frame);var dt=Math.min((now-last)/1000,.05);last=now;var t=now/1000;
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#080A14';ctx.fillRect(0,0,W,H);
+  // observatory guide rings
+  ctx.strokeStyle=hx(G,.05);ctx.lineWidth=1;[.18,.30,.42,.5].forEach(function(f){ctx.beginPath();ctx.arc(cx,cy,f*MIN,0,6.2832);ctx.stroke();});
+  ctx.strokeStyle=hx(G,.05);ctx.beginPath();ctx.moveTo(cx-.52*MIN,cy);ctx.lineTo(cx+.52*MIN,cy);ctx.moveTo(cx,cy-.4*MIN);ctx.lineTo(cx,cy+.4*MIN);ctx.stroke();
+  // bg stars
+  stars.forEach(function(s){var a=s.a*(0.5+0.5*Math.sin(t*1.3+s.ph));ctx.fillStyle=hx(WH,a);ctx.beginPath();ctx.arc(s.x*W,s.y*H,s.r,0,6.2832);ctx.fill();});
+  var pos=nodes.map(function(n){return P(n,t);});
+  // constellation lines
+  edges.forEach(function(e){var a=pos[e[0]],b=pos[e[1]];var g=ctx.createLinearGradient(a.x,a.y,b.x,b.y);g.addColorStop(0,hx(nodes[e[0]].c,.22));g.addColorStop(1,hx(nodes[e[1]].c,.22));ctx.strokeStyle=g;ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();});
+  // comets
+  cpt+=dt;if(cpt>2.0){cpt=0;var ang=R()*6.2832;comets.push({ang:ang,rad:.56,trail:[]});}
+  ctx.globalCompositeOperation='lighter';
+  for(var i=comets.length-1;i>=0;i--){var c=comets[i];c.rad-=dt*.28;var x=cx+Math.cos(c.ang)*c.rad*MIN,y=cy+Math.sin(c.ang)*c.rad*MIN*.72;c.trail.push([x,y]);if(c.trail.length>16)c.trail.shift();
+   for(var j=0;j<c.trail.length;j++){var a=j/c.trail.length*.5;ctx.fillStyle=hx(G,a);ctx.beginPath();ctx.arc(c.trail[j][0],c.trail[j][1],1.6*a+.4,0,6.2832);ctx.fill();}
+   var g=ctx.createRadialGradient(x,y,0,x,y,10);g.addColorStop(0,hx(G,.9));g.addColorStop(1,hx(G,0));ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,10,0,6.2832);ctx.fill();if(c.rad<=0)comets.splice(i,1);}
+  // node glow
+  nodes.forEach(function(n,i){var p=pos[i];var tw=0.6+0.4*Math.sin(t*1.6+n.ph);var rr=n.r*(MIN/900)*5;var g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rr*4);g.addColorStop(0,hx(n.c,(n.k==='core'?.5:.3)*tw));g.addColorStop(1,hx(n.c,0));ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,rr*4,0,6.2832);ctx.fill();});
+  ctx.globalCompositeOperation='source-over';
+  nodes.forEach(function(n,i){var p=pos[i];var tw=0.6+0.4*Math.sin(t*1.6+n.ph);var rr=n.r*(MIN/900)*5;ctx.fillStyle=hx(n.c,.55+.4*tw);ctx.beginPath();ctx.arc(p.x,p.y,rr*.5,0,6.2832);ctx.fill();
+   if(n.k!=='star')spark(p.x,p.y,rr*(n.k==='core'?2.6:1.7),n.c,.4*tw);});
+ }requestAnimationFrame(frame);
+})();
+</script></body></html>

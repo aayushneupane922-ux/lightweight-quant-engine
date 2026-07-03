@@ -17,6 +17,7 @@ from lqe.analytics.tearsheet import render_tearsheet
 from lqe.autonomy.promotion_gate import PromotionGate
 from lqe.autonomy.validator import PromotionCandidate, Validator
 from lqe.backtest.runner import run_backtest
+from lqe.core.errors import LqeError
 from lqe.data.base import MarketDataAdapter
 from lqe.data.ccxt_adapter import CcxtMarketDataAdapter
 from lqe.data.csv_replay import CsvReplayAdapter
@@ -309,7 +310,65 @@ def build_parser() -> argparse.ArgumentParser:
     desk_parser.add_argument("--port", type=int, default=8137)
     desk_parser.set_defaults(func=_cmd_desk)
 
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="Read-only health check: lockout, config, audit, kill switch, catalog, "
+        "license gate.",
+    )
+    doctor_parser.add_argument(
+        "--audit", default=None, help="Optional audit JSONL log to hash-chain verify."
+    )
+    doctor_parser.add_argument(
+        "--kill-switch", default=None, help="Optional persistent kill-switch file to inspect."
+    )
+    doctor_parser.add_argument("--symbol", default="BTC-USDT")
+    doctor_parser.add_argument(
+        "--no-license", action="store_true", help="Skip the (slower) license-gate subprocess."
+    )
+    doctor_parser.set_defaults(func=_cmd_doctor)
+
+    backup_parser = subparsers.add_parser(
+        "backup", help="Snapshot data/, runs/, and catalog.duckdb into a timestamped zip."
+    )
+    backup_parser.add_argument("--root", default=".", help="Working root to back up (default: .)")
+    backup_parser.add_argument(
+        "--dest", default=None, help="Backup directory (default: <root>/backups)"
+    )
+    backup_parser.set_defaults(func=_cmd_backup)
+
     return parser
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    from lqe.ops.health import format_report, run_health_checks, worst_status
+
+    checks = run_health_checks(
+        audit_path=Path(args.audit) if args.audit else None,
+        kill_switch_path=Path(args.kill_switch) if args.kill_switch else None,
+        symbol=args.symbol,
+        run_license_gate=not args.no_license,
+    )
+    print("lqe doctor - local paper-only quant engine")
+    print(format_report(checks))
+    status = worst_status(checks)
+    print(f"\noverall: {status}")
+    # A FAIL is a broken invariant (exit 1). A WARN (e.g. no audit log supplied,
+    # kill switch active) is informational and still exits 0.
+    return 1 if status == "FAIL" else 0
+
+
+def _cmd_backup(args: argparse.Namespace) -> int:
+    from lqe.ops.backup import create_backup
+
+    result = create_backup(
+        Path(args.root), dest_dir=Path(args.dest) if args.dest else None
+    )
+    included = ", ".join(result.included) if result.included else "(nothing found to back up)"
+    print(f"backup -> {result.archive}")
+    print(f"  included: {included}")
+    if result.skipped:
+        print(f"  skipped (absent): {', '.join(result.skipped)}")
+    print(f"  {result.files} files, {result.bytes_total:,} bytes")
+    return 0
 
 
 def _cmd_catalog(args: argparse.Namespace) -> int:
@@ -434,7 +493,13 @@ def _cmd_desk(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    result: int = args.func(args)
+    try:
+        result: int = args.func(args)
+    except LqeError as exc:
+        # Expected, typed failures (missing bundle, bad config, reconciliation
+        # halt, ...) print a clean line + non-zero exit instead of a traceback.
+        print(f"error: {exc}")
+        return 1
     return result
 
 

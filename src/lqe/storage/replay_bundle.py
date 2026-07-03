@@ -82,7 +82,13 @@ def build_bundle(
 
 def load_bundle(root: Path, bundle_id: str) -> tuple[ReplayBundle, list[MarketEvent]]:
     bundle_dir = root / "replay" / bundle_id
-    bundle = ReplayBundle.model_validate_json((bundle_dir / "bundle.json").read_text())
+    manifest = bundle_dir / "bundle.json"
+    if not manifest.exists():
+        raise DataQualityError(
+            f"replay bundle {bundle_id!r} not found under {root / 'replay'} "
+            f"— run `lqe ingest` then build a bundle first"
+        )
+    bundle = ReplayBundle.model_validate_json(manifest.read_text())
 
     events_path = bundle_dir / "events.parquet"
     actual_checksum = hashlib.sha256(events_path.read_bytes()).hexdigest()

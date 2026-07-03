@@ -11,6 +11,7 @@ chains even though those two metadata fields differ between runs.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -93,6 +94,34 @@ class AuditLog:
     @property
     def head_hash(self) -> str:
         return self._prev_hash
+
+    def write_jsonl(self, path: Path) -> None:
+        """Append-only JSONL export (docs/06 §6.5) — the source of truth a
+        restart rebuilds state from."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as fh:
+            for envelope in self._records:
+                fh.write(envelope.model_dump_json())
+                fh.write("\n")
+
+    @classmethod
+    def from_jsonl(cls, path: Path) -> AuditLog:
+        """Rebuild an `AuditLog` from a persisted JSONL file, re-verifying
+        the hash chain as it loads — a tampered or truncated file raises
+        rather than silently loading a partial/corrupt history."""
+        log = cls()
+        records: list[EventEnvelope] = []
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                records.append(EventEnvelope.model_validate_json(line))
+        log._records = records
+        log._prev_hash = records[-1].hash if records else determinism.GENESIS_HASH
+        if not log.verify():
+            raise ValueError(f"audit log at {path} failed hash-chain verification on load")
+        return log
 
 
 class Engine:

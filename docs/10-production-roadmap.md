@@ -75,11 +75,11 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **Tests:** DSR/PBO correct on known inputs · gate FAILs an overfit candidate · gate PASSes a robust synthetic · trial count spans all trials/models · LLM/author cannot set `validated`.
 - **Exit gate:** a candidate can be promoted **only** via the gate, with evidence recorded; `git tag m4-done`. **→ v0.1 (headless honest loop) shippable.**
 
-## M5 — Risk model + kill/freeze + recovery  · M · Dep: M3
-- [ ] `risk/model.py` + `risk/rules.py`: per-order + book-level checks (tunable-in-sim, audited) — single gate before `make_order`.
-- [ ] `risk/kill_switch.py`: persistent, disk-backed, human-owned, un-overridable by the LLM; survives restart.
-- [ ] Reconciliation each bar + on shutdown (halt on mismatch); rebuild-from-audit on restart.
-- [ ] De-risk action (cut exposure / pause / retire).
+## M5 — Risk model + kill/freeze + recovery  · M · Dep: M3  ✅ `m5-done`
+- [x] `risk/model.py` + `risk/rules.py`: per-order + book-level checks (tunable-in-sim, audited) — single gate before `make_order`.
+- [x] `risk/kill_switch.py`: persistent, disk-backed, human-owned, un-overridable by the LLM; survives restart.
+- [x] Reconciliation each bar + on shutdown (halt on mismatch); rebuild-from-audit on restart.
+- [x] De-risk action (cut exposure / pause / retire).
 - **Tests (property):** no intent sequence breaches limits · kill ⇒ no risk-increasing order until human clears · reconciliation halts on injected mismatch · rebuild-from-audit reproduces state.
 - **Exit gate:** risk gate + kill + recovery all enforced and tested; `git tag m5-done`.
 

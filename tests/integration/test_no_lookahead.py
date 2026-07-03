@@ -21,6 +21,7 @@ from lqe.execution.paper_broker import PaperBroker
 from lqe.execution.slippage import FixedBpsSlippage
 from lqe.portfolio.accounting import Accounting
 from lqe.portfolio.sizing import FixedFractionalSizer
+from lqe.risk.model import RiskModel
 
 
 class _FireOnFirstBar:
@@ -93,6 +94,7 @@ def test_fill_uses_the_next_bars_open_not_the_signal_bars_own_data() -> None:
         fill_simulator=MarketOrderFillSimulator(
             slippage=FixedBpsSlippage(0.0), commission=BpsCommission(bps=0.0)
         ),
+        risk_model=RiskModel(),
         symbol=symbol,
     )
 

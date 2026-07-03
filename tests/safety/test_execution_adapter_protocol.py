@@ -21,6 +21,7 @@ from lqe.execution.slippage import FixedBpsSlippage
 from lqe.models.plugins.trend_ma_cross import TrendMaCross
 from lqe.portfolio.accounting import Accounting
 from lqe.portfolio.sizing import FixedFractionalSizer
+from lqe.risk.model import RiskModel
 
 
 def test_paper_broker_satisfies_the_execution_adapter_protocol() -> None:
@@ -56,5 +57,6 @@ def test_session_refuses_a_non_paper_broker_at_construction() -> None:
             fill_simulator=MarketOrderFillSimulator(
                 slippage=FixedBpsSlippage(0.0), commission=BpsCommission(bps=0.0)
             ),
+            risk_model=RiskModel(),
             symbol="BTC-USDT",
         )

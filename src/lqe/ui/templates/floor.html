@@ -11,6 +11,38 @@
   sample-gated; send anything interesting to Research to validate.
 </div>
 
+<div class="hero">
+  <div class="hero-kpi">
+    <div class="hero-kpi-item">
+      <span class="hero-kpi-k">Equity (sim)</span>
+      <span class="hero-kpi-v mono" id="hero-equity">—</span>
+    </div>
+    <div class="hero-kpi-item">
+      <span class="hero-kpi-k">{% if snapshot.data_health %}{{ snapshot.data_health[0].symbol }}{% else %}Feed{% endif %} price</span>
+      <span class="hero-kpi-v mono" id="hero-price">—</span>
+    </div>
+    <span class="spacer"></span>
+    <button class="ctl-btn secondary" id="chart-pause-btn" aria-pressed="false">Pause</button>
+    <button class="ctl-btn secondary" id="chart-table-btn" aria-expanded="false">View as table</button>
+  </div>
+  <div class="hero-charts">
+    <div class="chart-pane" id="price-chart" role="img" aria-label="Candlestick price chart">
+      <span class="chart-empty" id="price-chart-empty">No price data yet.</span>
+    </div>
+    <div class="chart-pane" id="equity-chart" role="img" aria-label="Streaming equity area chart">
+      <span class="chart-empty" id="equity-chart-empty">No equity data yet.</span>
+    </div>
+  </div>
+  <div class="chart-fallback" id="chart-table-wrap" hidden>
+    <table class="data" id="chart-table">
+      <thead>
+        <tr><th>Time</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Equity</th></tr>
+      </thead>
+      <tbody id="chart-table-body"></tbody>
+    </table>
+  </div>
+</div>
+
 {% if jobs_enabled %}
 <div class="control-panel" id="control-panel">
   <div class="control-row">
@@ -58,4 +90,9 @@
   </div>
   {% endfor %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/theme/vendor/lightweight-charts.standalone.production.js"></script>
+<script src="/theme/chart.js"></script>
 {% endblock %}

@@ -18,7 +18,9 @@ from pydantic import BaseModel, ConfigDict
 from lqe.live.control import Command, ControlPlane
 from lqe.storage.state_reader import (
     DecisionCard,
+    EquityPoint,
     GraphPayload,
+    PriceBar,
     StateReader,
     TapeRow,
     UIState,
@@ -132,6 +134,12 @@ class DeskData:
 
     def graph(self, *, at_seq: int | None = None) -> GraphPayload:
         return self._state_reader.graph(at_seq=at_seq)
+
+    def price_series(self, symbol: str, *, max_points: int = 1000) -> list[PriceBar]:
+        return self._state_reader.price_series(symbol, max_points=max_points)
+
+    def equity_curve(self, *, max_points: int = 1000) -> list[EquityPoint]:
+        return self._state_reader.equity_curve(max_points=max_points)
 
     def catalog(self) -> list[CatalogRow]:
         return list(self._catalog_rows)

@@ -100,3 +100,46 @@ def test_data_health_reports_bars_seen_per_symbol() -> None:
     health = next(h for h in snap.data_health if h.symbol == SYMBOL)
     assert health.bars_seen == 120
     assert health.last_bar is not None
+
+
+# -- charts (docs/13 M19) --------------------------------------------------
+
+
+def test_price_series_returns_ohlcv_bars_for_the_symbol_oldest_first() -> None:
+    bars = _reader().price_series(SYMBOL)
+    assert len(bars) == 120
+    assert bars == sorted(bars, key=lambda b: b.ts)
+    assert all(b.h >= b.o and b.h >= b.c and b.l <= b.o and b.l <= b.c for b in bars)
+
+
+def test_price_series_is_empty_for_an_unknown_symbol() -> None:
+    assert _reader().price_series("ETH-USDT") == []
+
+
+def test_equity_curve_returns_one_point_per_risk_state_event_oldest_first() -> None:
+    points = _reader().equity_curve()
+    assert points, "expected a non-empty equity curve"
+    assert points == sorted(points, key=lambda p: p.ts)
+
+
+def test_charts_downsample_to_max_points_preserving_first_and_last() -> None:
+    reader = StateReader(
+        run_backtest(
+            run_id="sr-downsample", symbol=SYMBOL, bars=_bars(500),
+            strategy=TrendMaCross(symbol=SYMBOL, fast=5, slow=20), starting_cash=Decimal("10000"),
+        ).engine.audit.records,
+        catalog=[CatalogModelInfo(model_id="trend_ma_cross", family="trend")],
+    )
+    full = reader.price_series(SYMBOL, max_points=100_000)
+    downsampled = reader.price_series(SYMBOL, max_points=50)
+    assert len(full) > 50
+    assert len(downsampled) <= 50
+    assert downsampled[0].ts == full[0].ts
+    assert downsampled[-1].ts == full[-1].ts
+
+
+def test_charts_are_a_noop_when_already_within_budget() -> None:
+    reader = _reader()
+    assert reader.price_series(SYMBOL, max_points=1000) == reader.price_series(
+        SYMBOL, max_points=100_000
+    )

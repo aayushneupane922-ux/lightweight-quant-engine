@@ -59,6 +59,11 @@ _NAV = [
 ]
 
 
+def _primary_symbol(data: DeskData) -> str | None:
+    health = data.snapshot().data_health
+    return health[0].symbol if health else None
+
+
 def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> FastAPI:
     app = FastAPI(title="Obsidian Desk", docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(directory=str(_TEMPLATES))
@@ -156,6 +161,26 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
     def api_graph(at_seq: int | None = None) -> JSONResponse:
         # read-only; `at_seq` replays the neural-web at a point in the session
         return JSONResponse(data.graph(at_seq=at_seq).model_dump(mode="json"))
+
+    # docs/13 M19: the Floor hero chart's data — read-only, same
+    # `StateReader` the rest of the desk already reads from. `symbol`
+    # defaults to whichever feed the snapshot's `data_health` names first
+    # (there's normally exactly one feed per session).
+
+    @app.get("/api/chart/price")
+    def api_chart_price(symbol: str | None = None, max_points: int = 1000) -> JSONResponse:
+        sym = symbol or _primary_symbol(data)
+        if sym is None:
+            return JSONResponse([])
+        return JSONResponse(
+            [b.model_dump(mode="json") for b in data.price_series(sym, max_points=max_points)]
+        )
+
+    @app.get("/api/chart/equity")
+    def api_chart_equity(max_points: int = 1000) -> JSONResponse:
+        return JSONResponse(
+            [p.model_dump(mode="json") for p in data.equity_curve(max_points=max_points)]
+        )
 
     # --- the single write path -------------------------------------------
 

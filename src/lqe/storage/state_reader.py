@@ -70,6 +70,28 @@ class DataHealth(BaseModel):
     bars_seen: int
 
 
+class PriceBar(BaseModel):
+    """One OHLCV bar for the Floor hero chart (docs/13 M19) — read straight
+    off `MarketEvent`s already in the audit log, no new event type."""
+
+    model_config = _FROZEN
+    ts: datetime
+    o: Decimal
+    h: Decimal
+    l: Decimal  # noqa: E741 — matches MarketEvent's wire field name
+    c: Decimal
+    v: float
+
+
+class EquityPoint(BaseModel):
+    """One point of the equity curve (docs/13 M19) — read straight off
+    `RiskStateEvent`s already in the audit log, no new event type."""
+
+    model_config = _FROZEN
+    ts: datetime
+    equity: Decimal
+
+
 class UIState(BaseModel):
     """docs/11 §11.9. `simulated` is a hard-coded honesty flag, never a
     field a run can flip off."""
@@ -201,6 +223,38 @@ class StateReader:
         incrementally), most-recent last, capped at `limit`."""
         rows = [_tape_row(env) for env in self._records if env.seq > after_seq]
         return rows[-limit:]
+
+    # -- charts (docs/13 M19) ----------------------------------------------
+
+    def price_series(self, symbol: Symbol, *, max_points: int = 1000) -> list[PriceBar]:
+        """OHLCV bars for `symbol`, oldest first, straight off `MarketEvent`s
+        already in the audit log — no new event type. Downsampled to at
+        most `max_points` (evenly-strided) so a long-running feed still
+        renders a responsive chart."""
+        bars = [
+            PriceBar(
+                ts=env.sim_ts,
+                o=Decimal(str(env.payload["o"])),
+                h=Decimal(str(env.payload["h"])),
+                l=Decimal(str(env.payload["l"])),
+                c=Decimal(str(env.payload["c"])),
+                v=float(env.payload["v"]),
+            )
+            for env in self._records
+            if env.type == "MarketEvent" and str(env.payload["symbol"]) == symbol
+        ]
+        return _downsample(bars, max_points)
+
+    def equity_curve(self, *, max_points: int = 1000) -> list[EquityPoint]:
+        """The equity curve, oldest first, straight off `RiskStateEvent`s
+        already in the audit log — no new event type. Downsampled to at
+        most `max_points`."""
+        points = [
+            EquityPoint(ts=env.sim_ts, equity=Decimal(str(env.payload["equity"])))
+            for env in self._records
+            if env.type == "RiskStateEvent"
+        ]
+        return _downsample(points, max_points)
 
     # -- decision cards ---------------------------------------------------
 
@@ -343,6 +397,18 @@ class StateReader:
 
 
 # --- graph helpers --------------------------------------------------------
+
+
+def _downsample[T](rows: list[T], max_points: int) -> list[T]:
+    """Evenly-strided downsample preserving the first and last point —
+    good enough for a chart (the shape survives), not a statistical
+    resample. A no-op when already within budget."""
+    n = len(rows)
+    if n <= max_points or max_points <= 1:
+        return rows
+    step = (n - 1) / (max_points - 1)
+    indices = {round(i * step) for i in range(max_points)}
+    return [row for i, row in enumerate(rows) if i in indices]
 
 
 def _conviction(is_tracked: bool, n_trades: int) -> float:

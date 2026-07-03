@@ -12,6 +12,7 @@
   <!-- STATUS RAIL -->
   <div class="rail">
     <span class="brand">OBSIDIAN <b>DESK</b></span>
+    <span class="seg palette-hint">Ctrl/⌘+K to jump</span>
     <span class="seg"><span class="dot{% if kill_active %} off{% endif %}" id="feed-dot"></span><b>PAPER</b> · simulated</span>
     {% if snapshot.data_health %}
     <span class="seg">feed <b>{{ snapshot.data_health[0].symbol }}</b> · {{ snapshot.data_health[0].bars_seen }} bars</span>
@@ -73,6 +74,19 @@
     </div>
   </div>
 </div>
+
+<!-- COMMAND PALETTE (Ctrl/Cmd+K) -->
+<div class="palette-overlay" id="palette-overlay" hidden>
+  <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+    <input type="text" id="palette-input" class="palette-input" autocomplete="off"
+           placeholder="Jump to a view or action… (Floor, Risk, Kill, Autopilot…)">
+    <div class="palette-list" id="palette-list" role="listbox" aria-label="Command palette results"></div>
+  </div>
+</div>
+
+<!-- TOASTS (aria-live feedback for control/job actions) -->
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
 <script src="/theme/desk.js"></script>
 {% block scripts %}{% endblock %}
 </body>

@@ -96,57 +96,98 @@ ever.
 - **Exit gate:** ✅ full suite green (336 passed, 8 correctly skipped) +
   ruff + mypy + license gate green; `git tag m18-done`.
 
-## M19 — Institutional UI/UX polish (Obsidian Desk, applied)  · L · Dep: M18
+## M19 — Institutional UI/UX polish (Obsidian Desk, applied)  · L · Dep: M18  ✅ `m19-done`
 **Goal:** it doesn't just work — it looks like a Goldman/Bloomberg-grade
 instrument. Apply the design system to the *built* FastAPI + Jinja + WebSocket
 UI. The `ui-ux-pro-max` engine independently recommended this exact profile
 (Dark-OLED · dense dashboard · status colors · mono numerics), which
 confirms the direction.
 
+**Note on scope:** the Obsidian Desk tokens/typography/layout (status rail,
+mode spine, tape, inspector) were already built to this exact spec back in
+M7/M9/M10 — verified by diffing `theme/desk.css` against the color tokens
+above, which matched byte-for-byte before this milestone touched anything.
+M19's real remaining work, below, was the chart vendoring decision (owner
+confirmed: vendor, don't hand-roll), the command palette, toasts, and a
+genuine AA-contrast audit — not a rebuild.
+
 **Design system (build to this):**
 - **Direction:** "Obsidian Desk" — deep graphite, **one** amber heritage
   accent, **color only ever means something** (long / short / intelligence
   / risk). Full spec: `archive/28-ui-ux-design-system.md`.
-- **Color tokens (CSS custom properties):** `--void #07090D` · `--desk
+- [x] **Color tokens (CSS custom properties):** `--void #07090D` · `--desk
   #0E131B` · `--slab #131A24` · `--ridge #1E2836` · `--ink #E9EEF5` ·
-  `--mute #6B7A90` · `--amber #F0A62A`; semantic `--long #35C08B` (bullish)
-  · `--short #F0524D` (bearish) · `--intel #7C7BF2`. Every text pair ≥
-  4.5:1; **never color-alone** — pair with a glyph/label.
-- **Typography:** a grotesque sans for UI (Inter or **Fira Sans**), an
-  engineered mono for **every number** (**JetBrains Mono** / Fira Code)
-  with `font-variant-numeric: tabular-nums` so columns don't jitter as
-  values tick. Scale 12/14/16/20/28.
-- **Layout:** the "desk" cockpit — status rail (feed health, UTC clock,
-  **PAPER · LIVE LOCKED** amber shield, session sim-P/L, KILL), left mode
-  spine (Floor · Catalog · Research · Intel · **Engine 3D** · Risk ·
-  **Blotter**) with `F1..F7` + `⌘K` command palette, center hero, right
-  inspector, bottom Tape. **Density 8/10** — dense but scannable.
-  Institutional hierarchy: live prices/P&L **top, large, high-contrast**;
-  secondary metrics muted below.
-- **Charts:** for equity/price/candlestick/streaming, either keep
-  hand-rolled canvas (zero-dep, consistent with the force-graph) **or
-  vendor TradingView Lightweight Charts** (Apache-2.0 → ALLOW under the
-  license gate; offline-vendorable; the institutional standard for
-  financial charts — recommended for candlesticks/streaming, which are
-  painful to hand-roll well). Bullish `#26A69A` / bearish `#EF5350` with
-  **fill-vs-outline** so it survives colorblindness; real-time = streaming
-  area with a **pause/resume** control and the current value as a big KPI;
-  **data-table fallback** for a11y; downsample > 1000 points.
-- **Motion 4/10:** 150–300ms micro-interactions, ease-out enter / ease-in
-  exit, the fire-pulse; **respect `prefers-reduced-motion`.**
-- **A11y:** WCAG AA contrast, visible focus rings, keyboard-first,
-  reduced-motion, tabular numbers, no emoji-as-icon (SVG only), chart
-  data-table fallback.
-- **Tasks:** extract tokens to CSS variables; build a small component
-  library (tables with sticky header + `aria-sort`, KPI cards, badges,
-  verdict chips, toasts with `aria-live`, command palette); apply across
-  all views; polish empty/loading/error states; dark-only (no light mode
-  needed).
-- **Tests:** AA contrast on all text; focus visible; reduced-motion
-  honored; numbers tabular; no emoji icons; visual review against the
-  Obsidian Desk mockups.
-- **Exit gate:** the UI matches the design system, scans like an
-  institutional terminal, passes a11y. `git tag m19-done`.
+  `--mute #7A88A8` (lightened from the spec's literal `#6B7A90` — see AA
+  contrast note below) · `--amber #F0A62A`; semantic `--long #35C08B`
+  (bullish) · `--short #F0524D` (bearish) · `--intel #7C7BF2`. **AA
+  contrast audit** (`tests/integration/test_ui_design_system.py`): computed
+  WCAG contrast for every declared text color against every declared
+  background straight from `desk.css`'s own `:root` block — found `--mute`
+  at 4.01-4.27:1 on `--slab`/`--desk` (below the 4.5:1 this spec itself
+  requires), fixed by lightening to `#7A88A8` (4.9-5.6:1, same hue). Never
+  color-alone: badges/tags pair color with text; candlesticks pair
+  bullish/bearish with fill-vs-outline (below), not hue alone.
+- [x] **Typography:** unchanged from M7 — Inter/system-ui + JetBrains
+  Mono/monospace, `font-variant-numeric: tabular-nums`. Extended
+  `table.data td` (was missing explicit tabular-nums on all four data
+  tables — Catalog/Research/Daily/Risk) to declare it explicitly rather
+  than relying on the mono font's inherent fixed-width.
+- [x] **Layout:** status rail / mode spine (`F1..F7`) / tape / inspector
+  unchanged from M7-M10. Added the **`⌘K`/Ctrl+K command palette** (below)
+  and a **Floor hero** (candlestick price + streaming equity, "top, large,
+  high-contrast" per the hierarchy this spec calls for) — center-hero was
+  the one layout element not yet built.
+- [x] **Charts — vendored, not hand-rolled** (owner's explicit call):
+  **TradingView Lightweight Charts v5.2.0** (Apache-2.0 → `ALLOW`,
+  confirmed offline-vendorable — fetched once from the official npm
+  distribution, hash-pinned, committed to `ui/theme/vendor/`, documented in
+  `ui/theme/vendor/README.md` since the Python license gate can't see a
+  vendored JS asset). New `StateReader.price_series()`/`.equity_curve()`
+  read straight off existing `MarketEvent`/`RiskStateEvent` records — no
+  new event type. New `GET /api/chart/price` (candlestick, bullish
+  `#26A69A`/bearish `#EF5350`, **fill-vs-outline**: bullish is
+  hollow/outline-only, bearish solid-filled, so the distinction survives
+  colorblindness) and `GET /api/chart/equity` (streaming area, `--intel`
+  fill) on Floor, with a **pause/resume** control, the current price/
+  equity as **big KPIs**, an accessible **data-table fallback** (toggle
+  button, real `<table>`, not decorative), and **downsample to ≤1000
+  points** (evenly-strided, preserves first/last) so a long-running feed
+  stays responsive.
+- [x] **Motion 4/10:** 150-300ms `transition`s on buttons/cards/palette
+  items/toasts; the existing blanket `prefers-reduced-motion: reduce` rule
+  (M9) disables all of it — verified by a test that the rule's own block
+  contains `transition`/`animation`/`none`/`!important`.
+- [x] **A11y:** `:focus-visible` rings (amber outline) on every interactive
+  element; sticky `table.data thead th` headers; tabular numerals on every
+  data cell; no emoji-as-icon (verified: the project's existing ★/✓/✗/◇
+  typographic glyphs are intentional "pair color with a glyph" markers, not
+  emoji — a real emoji denylist scan of every template/script found none);
+  chart data-table fallback (above).
+- [x] **Tasks:** tokens were already CSS variables (M7); added toasts
+  (`aria-live="polite"`, real feedback for KILL/AUTOPILOT/job actions
+  instead of a blind reload-with-no-feedback), the command palette, sticky
+  table headers, tabular-nums, focus rings, and the hero chart. Verdict
+  chips/badges/KPI-style stats already existed (M7-M9) and needed no
+  rework. Dark-only, unchanged. Empty-state handling: the hero chart panes
+  show "No price/equity data yet." until the first real data arrives.
+- [x] **Tests:** ✅ `tests/integration/test_ui_design_system.py` (10 tests:
+  computed AA contrast for every token pair, focus-visible declared,
+  reduced-motion disables transitions/animations, tabular-nums present,
+  sticky headers present, no disallowed emoji, command palette + toast
+  markup on every page, fill-vs-outline candlestick colors) ·
+  `tests/unit/test_state_reader.py` (+11: `price_series`/`equity_curve`
+  correctness, downsampling preserves first/last and is a no-op within
+  budget) · `tests/integration/test_ui_chart_api.py` (7: the
+  `/api/chart/*` HTTP contract, default-symbol resolution, empty-session
+  behavior, vendored asset served with its license header intact) ·
+  **verified live** against the real `lqe desk` server (not just
+  TestClient) with the actual `runs/desk-preview/audit.jsonl` fixture:
+  hero chart markup rendered, vendored library served (200), real
+  candlestick/equity JSON flowed from `/api/chart/price`/`/api/chart/
+  equity`, command palette markup present on every view, control panels
+  correctly absent (jobs disabled on this read-only render path).
+- **Exit gate:** ✅ full suite green (372 tests, 8 correctly skipped) +
+  ruff + mypy + license gate green; `git tag m19-done`.
 
 ## M20 — Live Trade Blotter (the trade book you can watch)  · M · Dep: M19
 **Goal:** when a trade happens, you *see* it — unmistakably. (This is very

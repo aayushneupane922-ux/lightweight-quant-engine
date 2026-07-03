@@ -2,12 +2,12 @@
 
 **Purpose:** orient a developer (human or a fresh Claude Code session) picking this up cold. Read this, then `CLAUDE.md` (constitution) + `GUARDRAILS.md` + `WORKFLOW.md`, then `docs/10-production-roadmap.md` (the milestone map, kept checked-off as work lands).
 
-## 1. Status (v2.0 shipped; v3.0 in progress — M18/5 done)
+## 1. Status (v2.0 shipped; v3.0 in progress — M19/5 done)
 
-A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 (v1.0)** and **M13 through M17 (v2.0, `docs/12-v2-roadmap.md`)** are complete, verified, committed, and tagged. **v3.0 (`docs/13-v3-roadmap.md`, M18–M22) is in progress: M18 is done and tagged; M19–M22 are not started.** v4.0 (`docs/14-v4-catalog-expansion.md`, M23–M26) is scoped but not started at all. See §1a/§1c.
+A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 (v1.0)** and **M13 through M17 (v2.0, `docs/12-v2-roadmap.md`)** are complete, verified, committed, and tagged. **v3.0 (`docs/13-v3-roadmap.md`, M18–M22) is in progress: M18 and M19 are done and tagged; M20–M22 are not started.** v4.0 (`docs/14-v4-catalog-expansion.md`, M23–M26) is scoped but not started at all. See §1a/§1c.
 
-- **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, `m13-done` … `m17-done`, `v2.0`, then `m18-done`.
-- **Health:** full suite green (336 passed, 8 correctly skipped as of `m18-done`), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`), license gate PASS (50 runtime deps), git tree clean.
+- **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, `m13-done` … `m17-done`, `v2.0`, then `m18-done`, `m19-done`.
+- **Health:** full suite green (372 tests, 8 correctly skipped as of `m19-done`), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`), license gate PASS (50 runtime deps), git tree clean.
 - **Release evidence:** `M12-RELEASE-REVIEW.md` (v1.0) and `V2-RELEASE-REVIEW.md` (v2.0, M13–M16) — both full §19.1 safety/honesty reviews with evidence. v3.0 doesn't have its own review yet — that's M22's job, not done until v3.0 tags. Runtime guide: `USER-GUIDE.md` (not yet updated for v3/M18 — that's also M22's job per `docs/13`'s own plan). Deep-dive on every component: **`COMPONENT-GUIDE.md`** (also not yet updated for M18 — same reason).
 - **Branch:** `master`. Every milestone = one commit + a `mN-done` tag. Git identity is a local placeholder (set per-repo, flagged to the owner).
 
@@ -37,7 +37,16 @@ The owner sent `DEVELOPER-HANDOFF.md` (a standalone, non-agent-jargon briefing o
 
 **Post-M18 fix (system audit, this session):** the owner reported `run.py` "opens and closes in a nanosecond" on double-click. Root cause: Windows hands double-clicked `.py` files to whatever Python is file-associated — here, a bare system install with none of this project's dependencies — so it crashed on the first `lqe` import and the console closed itself instantly (real console windows opened by double-click close the moment the process exits, whether it succeeded or crashed). Confirmed: `.venv\Scripts\python.exe run.py` runs fine end-to-end (first-run auto-ingest → `ready: true`); the bare system `python` errors with `ModuleNotFoundError: No module named 'lqe'`. Fix: added `run.bat` (repo root) as the actual Windows double-click target — calls `.venv\Scripts\python.exe run.py` explicitly and pauses on a missing-venv or crash so the window never vanishes silently again. `run.py` itself is unchanged. Verified via `Start-Process .\run.bat` (the real double-click code path) reaching `ready: true`. Updated `README.md`/`USER-GUIDE.md`/`docs/13-v3-roadmap.md` to point at `run.bat` for Windows; `python run.py` remains correct for anyone already in an activated venv/terminal.
 
-**M19–M22 not started.** Before starting M19 (institutional UI/UX polish), there's a real, undecided dependency call flagged in `docs/13` itself: whether to vendor **TradingView Lightweight Charts** (Apache-2.0, license-gate-clean) for candlestick/streaming charts, or keep the existing hand-rolled `<canvas>` approach used for the 3D neural-web. This was surfaced to the owner at the end of the M18 session but not yet answered — **ask before starting M19**, don't assume either way.
+**M19 (institutional UI/UX polish) is done, tagged `m19-done`:** the owner answered the TradingView Lightweight Charts question — **vendor it**, not hand-roll. Highlights:
+- Vendored `lightweight-charts.standalone.production.js` v5.2.0 (Apache-2.0, official npm distribution, hash-pinned) under `ui/theme/vendor/`, documented in its own `README.md` since the Python license gate can't see a static JS asset.
+- New Floor **hero chart**: candlestick price + streaming equity area, both read straight off existing `MarketEvent`/`RiskStateEvent` audit records via new `StateReader.price_series()`/`.equity_curve()` (no new event type) and served via new `GET /api/chart/price`/`/api/chart/equity` (downsampled to ≤1000 points). Pause/resume control, big KPIs, an accessible data-table fallback, empty-state text before first data.
+- **Fill-vs-outline candlesticks** (bullish hollow/outline-only, bearish solid) so the up/down distinction survives colorblindness, not hue alone.
+- New **⌘K/Ctrl+K command palette** (built from the already-rendered nav DOM, so it can't drift) + **toasts** (`aria-live="polite"`) replacing blind reload-with-no-feedback on control/job actions.
+- **A real AA-contrast audit** found `--mute` (the spec's literal `#6B7A90`) failed 4.5:1 on `--slab`/`--desk` (4.01-4.27:1) — fixed by lightening to `#7A88A8` (4.9-5.6:1, same hue). Added `:focus-visible` rings, sticky table headers, explicit tabular-nums on all four data tables, and a real emoji-denylist scan (found none — the existing ★/✓/✗/◇ glyphs are intentional, not emoji-as-icon).
+- Found the Obsidian Desk tokens/layout were **already built to this spec since M7/M9/M10** — M19's real remaining work was the chart, the palette, toasts, and the contrast audit, not a redesign.
+- 28 new tests, full detail + exact file/test citations: `docs/13-v3-roadmap.md`'s M19 section. Verified live against the real `lqe desk` server with `runs/desk-preview/audit.jsonl` (not just TestClient).
+
+**M20–M22 not started.**
 
 **v4 (`docs/14-v4-catalog-expansion.md`, M23–M26) is fully scoped but zero work has started.** It depends on nothing in v3, so it could in principle be worked in parallel/before v3 finishes if the owner wants — not assumed, ask.
 
@@ -78,6 +87,7 @@ CI (`.github/workflows/ci.yml`) now has **two jobs**: `check` (installs `.[ui,se
 - **M16** — real-Ollama marker-gated integration test (`tests/integration/test_ollama_narrator_live.py`) + a second CI job (`models-extra`) installing the full `models` extra.
 - **M17** — docs updated for v2.0 (this file, `README.md`, `USER-GUIDE.md`, `COMPONENT-GUIDE.md`); §19.1 safety/honesty review re-run against M13–M16; full suite/lint/type/license verified green. Tagged `v2.0`.
 - **M18** — zero-CLI one-click launch: `run.py` rewritten (one-click launcher + first-run auto-ingest), `ops/jobs.JobManager` (GUI-triggered ingest/backtest/live start-stop), `live/session.LiveSession` (extracted from `cli._cmd_live`, shared by CLI + JobManager), onboarding screen (`LaunchState` + middleware), Live Control panel (Floor) + Quick Backtest panel (Research). Docs (`USER-GUIDE`/`COMPONENT-GUIDE`) intentionally not yet updated for this — that's M22's job per `docs/13`'s own plan, not an oversight.
+- **M19** — institutional UI/UX polish: vendored TradingView Lightweight Charts (owner's call) for a Floor hero chart (candlestick + streaming equity, fill-vs-outline colorblind-safe), new `StateReader.price_series`/`.equity_curve` + `/api/chart/*`, a ⌘K/Ctrl+K command palette, `aria-live` toasts, a real AA-contrast audit (fixed `--mute`), focus rings, sticky table headers, tabular-nums. Found the design system's tokens/layout already matched spec since M7-M10.
 
 ## 3. Key deviations from the named spec (all deliberate + flagged)
 
@@ -106,15 +116,12 @@ Run `docs/archive/19` §19.1 safety review after any milestone or any change tou
 
 ## 5. What's left
 
-**Immediate next step: M19 (institutional UI/UX polish, `docs/13-v3-roadmap.md`).**
-Before starting it, ask the owner the TradingView Lightweight Charts
-vendoring question flagged in §1c — it was surfaced, not yet answered, at
-the end of the M18 session. Don't assume either direction.
-
-After M19: **M20 (live trade blotter)** and **M21 (engine-room conversation
-feed)** — both depend on M19's design system, not on each other, so either
-order works. Then **M22 (v3 hardening + release: safety/honesty re-review,
-`V3-RELEASE-REVIEW.md`, docs updated for real this time, tag `v3.0`)**.
+**Immediate next step: M20 (live trade blotter) or M21 (engine-room
+conversation feed), `docs/13-v3-roadmap.md`.** Both depend on M19's design
+system (now shipped), not on each other, so either order works — ask the
+owner which first, don't assume. Then **M22 (v3 hardening + release:
+safety/honesty re-review, `V3-RELEASE-REVIEW.md`, docs updated for real
+this time, tag `v3.0`)**.
 
 After v3.0 (or in parallel, if the owner prefers — see §1c): **v4
 (`docs/14-v4-catalog-expansion.md`, M23–M26)** — measured catalog

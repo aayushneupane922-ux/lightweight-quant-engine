@@ -370,6 +370,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-polls", type=int, default=None,
         help="Stop after N polls (bounded demo/test runs); omit to run forever.",
     )
+    live_parser.add_argument(
+        "--out", default=None,
+        help="Persist the trading audit log here (docs/12 M15). Passing the same path again "
+        "on a later run auto-resumes the fleet's positions/cash/orders from it instead of "
+        "starting flat; a new or omitted path always starts flat.",
+    )
     live_parser.set_defaults(func=_cmd_live)
 
     return parser
@@ -527,7 +533,7 @@ def _cmd_live(args: argparse.Namespace) -> int:
     from lqe.autonomy.searchable_scaled import broad_searchable_models
     from lqe.autonomy.validator import Validator
     from lqe.core.clock import ManualClock
-    from lqe.core.engine import Engine
+    from lqe.core.engine import AuditLog, Engine
     from lqe.core.events import MarketEvent
     from lqe.data.csv_replay import CsvReplayAdapter
     from lqe.live.control import ControlPlane
@@ -541,6 +547,16 @@ def _cmd_live(args: argparse.Namespace) -> int:
     from lqe.storage.state_reader import CatalogModelInfo, StateReader
     from lqe.ui.app import BIND_HOST, serve
     from lqe.ui.data import CatalogRow, DeskData
+
+    def _market_events_from_audit(audit: AuditLog) -> list[MarketEvent]:
+        # MarketEvents are emitted in processing order (one per bar) by
+        # LiveMultiModelRunner.process_bar, so the audit's own seq order is
+        # already the correct chronological order -- no re-sort needed.
+        return [
+            MarketEvent.model_validate(envelope.payload)
+            for envelope in audit.records
+            if envelope.type == "MarketEvent"
+        ]
 
     def _catalog_rows(catalog: ModelCatalog) -> list[CatalogRow]:
         rows = [
@@ -591,8 +607,22 @@ def _cmd_live(args: argparse.Namespace) -> int:
         adapter=data_adapter, symbol=symbol, timeframe=args.timeframe,
         poll_seconds=args.poll_seconds,
     )
-    print(f"seeding {args.lookback_bars} recent bars...")
-    history = feed.seed_history(lookback_bars=args.lookback_bars)
+
+    # docs/12 M15: passing the same --out path again auto-resumes -- if a
+    # prior audit exists there, its hash chain is verified on load (fail
+    # loud on tampering/corruption, never silently partial) and its
+    # MarketEvents become the replay history instead of a fresh fetch. A new
+    # or omitted --out always starts flat.
+    out_path = Path(args.out) if args.out else None
+    history: list[MarketEvent]
+    if out_path is not None and out_path.exists():
+        prior_audit = AuditLog.from_jsonl(out_path)
+        history = _market_events_from_audit(prior_audit)
+        print(f"resuming from {out_path} ({len(history)} historical bars, hash-chain verified)")
+        feed.resume_from(history)
+    else:
+        print(f"seeding {args.lookback_bars} recent bars...")
+        history = feed.seed_history(lookback_bars=args.lookback_bars)
     if not history:
         print("no bars returned -- check network/exchange/symbol (or --csv-path).")
         return 1
@@ -613,6 +643,8 @@ def _cmd_live(args: argparse.Namespace) -> int:
         trade_clock.set(bar.ts_open)
         runner.process_bar(bar)
         bars_so_far.append(bar)
+    if out_path is not None:
+        trade_engine.audit.write_jsonl(out_path)
 
     orchestrator = Orchestrator(
         validator=Validator(),
@@ -681,6 +713,8 @@ def _cmd_live(args: argparse.Namespace) -> int:
             if state.narration:
                 print(f"    {state.narration}")
 
+        if out_path is not None:
+            trade_engine.audit.write_jsonl(out_path)
         desk_data.set_state_reader(rebuild_state_reader())
         print(
             f"processed {len(new_bars)} new bar(s); total bars={len(bars_so_far)}; "

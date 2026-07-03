@@ -93,6 +93,43 @@ def test_poll_new_bars_only_returns_strictly_newer_closed_bars() -> None:
     assert feed.poll_new_bars() == []
 
 
+def test_resume_from_matches_a_fresh_seed_at_the_same_cutoff() -> None:
+    """docs/12 M15: if the persisted history covers every bar that was
+    closed at persist time (the normal case -- lqe live writes through
+    after every processed batch), resuming from it behaves exactly like
+    seed_history would have: nothing looks "new" until real time advances."""
+    now = datetime(2026, 1, 1, 12, 0, 30, tzinfo=UTC)
+    all_bars = _sequence(10, now=now)  # i=9 is still forming, i=0..8 closed
+    feed = LiveFeed(
+        adapter=FakeAdapter(all_bars), symbol=SYMBOL, timeframe=TF, now_fn=lambda: now
+    )
+    feed.resume_from(all_bars[:9])  # every closed bar, i=0..8
+    assert feed.poll_new_bars() == []
+
+
+def test_resume_from_catches_up_a_gap_since_the_last_persisted_bar() -> None:
+    """If the process crashed before persisting the most-recently-closed
+    bar, the very next poll after resume must catch it up rather than
+    silently skipping it."""
+    now = datetime(2026, 1, 1, 12, 0, 30, tzinfo=UTC)
+    all_bars = _sequence(10, now=now)
+    feed = LiveFeed(
+        adapter=FakeAdapter(all_bars), symbol=SYMBOL, timeframe=TF, now_fn=lambda: now
+    )
+    feed.resume_from(all_bars[:8])  # missing the newest closed bar, i=8
+
+    caught_up = feed.poll_new_bars()
+    assert [b.c for b in caught_up] == [Decimal("108")]
+    assert feed.poll_new_bars() == []
+
+
+def test_resume_from_empty_history_is_a_no_op() -> None:
+    now = datetime(2026, 1, 1, 12, 0, 30, tzinfo=UTC)
+    feed = LiveFeed(adapter=FakeAdapter([]), symbol=SYMBOL, timeframe=TF, now_fn=lambda: now)
+    feed.resume_from([])
+    assert feed.poll_new_bars() == []
+
+
 def test_timeframe_seconds_rejects_unknown_timeframe() -> None:
     import pytest
 

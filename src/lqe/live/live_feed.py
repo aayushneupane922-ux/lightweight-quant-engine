@@ -61,6 +61,14 @@ class LiveFeed:
             self._last_ts_open = bars[-1].ts_open
         return bars
 
+    def resume_from(self, bars: list[MarketEvent]) -> None:
+        """Position the dedup cursor at the end of an externally-supplied bar
+        history (docs/12 M15: e.g. reconstructed from a persisted audit log
+        on restart) instead of a fresh `seed_history()` fetch -- so the next
+        `poll_new_bars()` only returns genuinely new bars beyond it."""
+        if bars:
+            self._last_ts_open = bars[-1].ts_open
+
     def poll_new_bars(self) -> list[MarketEvent]:
         """One fetch; returns only bars strictly newer than the last one
         already returned (by this feed instance), ascending, all fully

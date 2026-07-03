@@ -87,9 +87,28 @@ Run `docs/archive/19` §19.1 safety review after any milestone or any change tou
 
 ## 5. What's left
 
-Both `docs/10` (v1.0, M0–M12) and `docs/12-v2-roadmap.md` (v2.0, M13–M17) are
-fully done and tagged — **there is no roadmap past v2.0 in any doc.** Some
-things v2.0 itself surfaced but deliberately left out of scope:
+`docs/10` (v1.0, M0–M12) and `docs/12-v2-roadmap.md` (v2.0, M13–M17) are
+fully done and tagged. The owner sent `DEVELOPER-HANDOFF.md` to their
+developer and asked for an upgrade roadmap; the developer proposed two,
+now adopted and in progress:
+
+- **`docs/13-v3-roadmap.md` (v3.0, M18–M22)** — zero-CLI one-click launch,
+  institutional UI/UX polish, a live trade blotter, and a plain-language
+  "engine room" conversation feed (watch the LLM/Optuna/Validator/Autopilot
+  talk). All additive UX/visibility — none of it touches the 9 safety
+  non-negotiables.
+- **`docs/14-v4-catalog-expansion.md` (v4.0, M23–M26)** — ~50 more models,
+  organized by return-driver "sleeve" rather than headcount, with a
+  correlation-curation intake step and a trial-count update to the
+  promotion gate so the bigger catalog doesn't manufacture false
+  positives.
+
+Check `git tag -l` for the latest `mN-done` to see how far execution has
+gotten past this file's own last edit — this section is not guaranteed to
+be updated every milestone the way the two roadmap docs are.
+
+Some things v2.0 itself surfaced but deliberately left out of scope (v3/v4
+above don't address these either — flag for a future v5 if still wanted):
 
 - The orchestrator's own autonomy/promotion history is not reconstructed on
   an `lqe live --out` resume (M15's documented limitation) — only the trading

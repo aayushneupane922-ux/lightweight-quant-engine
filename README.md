@@ -40,6 +40,8 @@ The sections below are the original **planning package** the engine was built fr
 | 10 | [production-roadmap](10-production-roadmap.md) | Step-by-step build roadmap: M0–M12, gates, releases |
 | 11 | [technical-spec](11-technical-spec.md) | Implementation contracts: interfaces, schemas, flows |
 | 12 | [v2-roadmap](12-v2-roadmap.md) | Post-v1.0 roadmap: M13–M17 (catalog complete, `lqe live`, CI for the LLM/heavy-model path) |
+| 13 | [v3-roadmap](13-v3-roadmap.md) | Post-v2.0 roadmap: M18–M22 (one-click launch, institutional UI, live blotter, engine-room conversation) |
+| 14 | [v4-catalog-expansion](14-v4-catalog-expansion.md) | Post-v3.0 roadmap: M23–M26 (measured catalog diversification by return-driver sleeve, not headcount) |
 
 Mockups (open in a browser): [obsidian-desk-model-floor](mockups/obsidian-desk-model-floor.html) · [neural-engine-3d](mockups/neural-engine-3d.html) · [neural-engine-plasma](mockups/neural-engine-plasma.html) · [neural-engine-holo](mockups/neural-engine-holo.html) · [neural-engine-observatory](mockups/neural-engine-observatory.html)
 

@@ -127,6 +127,23 @@ def _catalog_check(symbol: str) -> Check:
     )
 
 
+def _ollama_check(host: str = "127.0.0.1", port: int = 11434, timeout: float = 0.5) -> Check:
+    """docs/12 M17: informational only -- Ollama absent is a fully supported
+    state (the narrator falls back to rule-based, docs/10 M9), so this is
+    WARN, never FAIL. Useful before an `lqe live --llm` run."""
+    import socket
+
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            pass
+    except OSError:
+        return Check(
+            "local LLM (Ollama)", "WARN",
+            f"not reachable at {host}:{port} -- `--llm` runs will fall back to rule-based",
+        )
+    return Check("local LLM (Ollama)", "OK", f"reachable at {host}:{port}")
+
+
 def _license_check() -> Check:
     """Run the standing license gate in a subprocess. Fails closed on a DENY/
     REVIEW; degrades to WARN (not FAIL) only when the auditing tool itself
@@ -168,6 +185,7 @@ def run_health_checks(
         _audit_check(audit_path),
         _kill_switch_check(kill_switch_path),
         _catalog_check(symbol),
+        _ollama_check(),
     ]
     if run_license_gate:
         checks.append(_license_check())

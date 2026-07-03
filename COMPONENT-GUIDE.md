@@ -61,6 +61,7 @@ command) — nothing reaches outside your machine except `ingest --adapter ccxt`
 | `lqe catalog` | Lists the **scaled** model catalog (51 registered) for a symbol: which are admitted (constructible now) vs transparently quarantined (missing optional lib), broken down by family. | nothing (pure listing) | nothing |
 | `lqe check-config` | Validates a `.json`/`.toml` config against the paper-only lockout schema; a `mode: live` config is refused *by name*, not by generic schema failure. | a config file | nothing |
 | `lqe autopilot` | Runs the autonomy loop N steps over a bundle: proposes a model + param range, runs Optuna trials, validates the best candidate, promotes on PASS, narrates. Deterministic given the same `--seed`. | a replay bundle | optional audit JSONL (`--out`), optional catalog trial-provenance (`--catalog`) |
+| `lqe live` *(v2.0, docs/12 M14)* | Every admitted catalog model gets its own paper book, sharing one audit log + one kill switch, fed by continuously-polled real (`--adapter ccxt`) or replayed (`--adapter csv`) bars; the autonomy loop narrates live on the desk. `--out <path>` persists and auto-resumes (same path again ⇒ reconstructs the fleet's trading state via replay — docs/12 M15). `--max-polls N` bounds a run for demos/tests. | ccxt (public) or a local CSV | optional trading audit JSONL (`--out`), serves the desk |
 | `lqe desk` | Serves the Obsidian Desk on `127.0.0.1`. Read-only render of an (optional) audit log + an (optional) kill-switch file. | an audit JSONL (optional), a kill-switch file (optional) | the kill-switch file, if you use the UI's KILL control |
 | `lqe doctor` | Read-only health check: paper-only lockout, config-rejects-live, audit hash-chain (if given a log), kill-switch state, catalog build, license gate. `FAIL`→exit 1, `WARN`→exit 0. | whatever paths you point it at | nothing |
 | `lqe backup` | Zips `data/`, `runs/`, `catalog.duckdb` into a timestamped archive. Skips whatever doesn't exist yet. | `data/`, `runs/`, `catalog.duckdb` | a zip under `backups/` |
@@ -217,12 +218,14 @@ validation; only the gate does (`test_every_admitted_model_is_unproven_until_gat
 individual packages) unlocks the heavy adapters; without them, `intake_check`
 quarantines each one *transparently* with a clear reason
 (`"... requires the optional 'models' extra: pip install '.[models]'"`) —
-never a crash, never a silent drop. On this machine, `statsmodels`/`arch`/
-`hmmlearn`/`ruptures`/`scikit-learn`/`lightgbm` are installed (catalog admits
-48/51); the 3 cvxpy-based portfolio optimizers (PyPortfolioOpt/skfolio/
-riskfolio-lib) remain quarantined because their `jupyter-widgets`/`vectorbt`
-dependency chain trips Windows' 260-character path limit unless
-`LongPathsEnabled=1` is set (admin + reboot) — see USER-GUIDE §1 for the fix.
+never a crash, never a silent drop. As of docs/12 M13, all 9 `models`-extra
+packages (`statsmodels`/`arch`/`hmmlearn`/`ruptures`/`scikit-learn`/
+`lightgbm`/`skfolio`/`PyPortfolioOpt`/`riskfolio-lib`) are installed on this
+machine and `lqe catalog` shows **51/51 admitted, 0 quarantined**. The 3
+cvxpy-based portfolio optimizers had been blocked by Windows' 260-character
+path limit (their `jupyter-widgets`/`vectorbt` dependency chain) until
+`LongPathsEnabled=1` was set (admin, no reboot needed) — see USER-GUIDE §1
+for the exact command on a fresh machine.
 
 ---
 
@@ -259,18 +262,28 @@ dependency chain trips Windows' 260-character path limit unless
   supports it, but the CLI doesn't plumb it through yet. Today, Research
   populates only if you call `build_desk_data` yourself with rows loaded from
   a catalog. Easy follow-up if you want it.
-- **The autopilot's searchable surface (3 models) is much smaller than the
+- **`lqe autopilot`'s searchable surface (3 models) is much smaller than the
   full catalog (51 models).** This is intentional per the roadmap (M8 proves
   the loop; M11 scales the *catalog*, not yet the *searchable set*) — but if
-  you expected autopilot to explore all 51, it currently only explores those
-  3 by default (`autonomy/searchable.default_searchable_models`).
+  you expected `lqe autopilot` to explore all 51, it currently only explores
+  those 3 by default (`autonomy/searchable.default_searchable_models`).
+  `lqe live` (§11) uses a broader 10-model surface instead
+  (`autonomy/searchable_scaled.broad_searchable_models`) — the two commands'
+  autonomy loops deliberately don't search the same set.
 - **The kill-clear operator fallback** (§4.3/§7): the web API defaults a
   blank operator to `"desk-operator"` rather than hard-rejecting, unlike the
   `KillSwitch.clear()` primitive it calls, which does hard-raise on a falsy
   operator when called directly (e.g. from the CLI or tests).
-- **Windows long-path limit** blocks the full `.[models]` install (§6). The
-  jupyter-free statistical subset installs cleanly and is what's on this
-  machine now.
+- **Windows long-path limit** used to block the full `.[models]` install; as
+  of docs/12 M13 it's resolved on this machine (`LongPathsEnabled=1` set,
+  all 9 packages installed, catalog 51/51). A fresh machine still needs that
+  registry step repeated first (`USER-GUIDE.md` §1).
+- **`lqe live --out` resume (docs/12 M15) reconstructs the trading fleet
+  only**, not the orchestrator's own autonomy/promotion history — a resumed
+  session's autonomy loop starts a fresh campaign over the reconstructed bar
+  history. Also: replay uses the *current* `--kill-switch` state, so if
+  someone toggles it between a crash and a resume, replayed decisions could
+  diverge from what was originally decided in that exact window.
 
 None of these weaken a lockout, the gate, or the audit chain — they're UX/
 scope gaps, not safety gaps.
@@ -339,16 +352,18 @@ lqe validate --bundle <bundle-id> --symbol BTC-USDT --strategy trend_ma_cross --
 
 ---
 
-## 11. Live multi-model paper trading (post-v1.0 extension)
+## 11. Live multi-model paper trading (`lqe live`, v2.0)
 
-User-requested, added after v1.0: **`scripts/run_live_fleet.py`** runs the
-whole admitted catalog against real-time public market data continuously,
-with the autonomy loop narrated by a genuine local LLM. It is *not* part of
-the v1.0-tagged `lqe` CLI surface — a runnable script layered on the same
-tested primitives, not a new milestone.
+Runs the whole admitted catalog against continuously-polled market data,
+with the autonomy loop narrated by a genuine local LLM. Started life
+post-v1.0 as a standalone script (`scripts/run_live_fleet.py`); as of v2.0
+(`docs/12-v2-roadmap.md` M14) it's a real, tagged `lqe live` CLI subcommand
+with the same discipline as every other command — the script now just
+delegates to it (`scripts/run_live_fleet.py` is a ~15-line wrapper, kept for
+anyone's muscle memory, not deleted).
 
 ```
-python scripts/run_live_fleet.py --llm --llm-model llama3.2:3b
+lqe live --llm --llm-model llama3.2:3b --out runs/live-session.jsonl
 ```
 
 **What it wires together, and why each piece needed a small addition:**
@@ -408,24 +423,62 @@ python scripts/run_live_fleet.py --llm --llm-model llama3.2:3b
   *decoding*, not validation — `parse_tool_calls` still checks independently
   and still fails closed on drift.
 
-**Verified live, not just read in the source:** a fleet of 48 real admitted
-models traded against real recent Binance BTC-USDT bars (42 of them
-accrued genuine trades, including the HMM regime model); the audit
-hash-chain verified throughout; the Intel view showed a decision card
-tagged **LLM** with real, non-templated narration text from a local
-`llama3.2:3b` model (`"Autonomy step failed due to model degradation and
-lack of improvement."` — not the rule-based template's wording); `KILL`
-still halted the whole fleet's new entries with one shared switch.
+**v2.0 additions on top of the above (docs/12 M13–M16):**
+
+- **`_cmd_live` in `src/lqe/cli.py`** — the standalone script's argument
+  surface, ported into a real subcommand. Two new flags beyond the original
+  script: `--adapter {ccxt,csv}` + `--csv-path` (an offline/test seam
+  mirroring `lqe ingest`'s own `--adapter` choice — no network needed for
+  demos or CI-style runs) and `--max-polls N` (bounds a run; `None` default
+  still means run forever).
+- **`--out <path>` + `LiveFeed.resume_from` (docs/12 M15)** — passing the
+  same `--out` path on a later invocation auto-resumes: `AuditLog.from_jsonl`
+  hash-chain-verifies the persisted trading audit (fail loud on corruption,
+  same as the M5 rebuild-from-audit pattern), and its `MarketEvent`s are fed
+  through the *exact same* `runner.process_bar` loop used for a fresh seed —
+  reconstruction is a replay, not hand-written state math, so it inherits the
+  M1/M3 determinism guarantee for free (verified: two runs against the same
+  `--out` path produce byte-identical hash chains). `resume_from` repositions
+  the polling dedup cursor so the next poll only fetches what's genuinely new
+  since the last persisted bar.
+- **The 51-model catalog actually running for the first time surfaced a real
+  bug**: `models/catalog_scale.py`'s 3 portfolio adapters
+  (skfolio/PyPortfolioOpt/riskfolio-lib) shared one hardcoded 2-asset
+  synthetic universe. skfolio's `HierarchicalRiskParity` crashes on exactly
+  2 assets regardless of history length (`argmax of an empty sequence`) —
+  latent since M11, never triggered because all 3 were quarantined
+  (`.[models]` incomplete) until docs/12 M13 installed them. Fixed by
+  expanding the shared universe to 3 synthetic assets.
+- **`tests/integration/test_ollama_narrator_live.py` (docs/12 M16)** — a
+  marker-gated (`llm_integration`) test against a *genuine* Ollama server,
+  gated by an actual reachability probe rather than a manual flag: skips
+  automatically when absent (CI), runs automatically when present. Closes
+  the gap where the real-LLM path had only ever been verified manually.
+- **Two CI lanes** (`.github/workflows/ci.yml`): `check` (unchanged,
+  `.[ui,search,dev]` only — the heavy-lib quarantine tests need `.[models]`
+  absent there) and `models-extra` (new, `.[ui,search,dev,models]`, full
+  suite) so the heavy adapters get real automated coverage too.
+
+**Verified live, not just read in the source:** a fleet of 51 real admitted
+models (post-M13, up from 48) traded against real recent Binance BTC-USDT
+bars; the audit hash-chain verified throughout; the Intel view showed a
+decision card tagged **LLM** with real, non-templated narration text from a
+local `llama3.2:3b` model; `KILL` halted the whole fleet's new entries with
+one shared switch. This session also verified the `llm_integration` test
+both ways (Ollama up → passes with a real round trip; Ollama down → cleanly
+skips) and the `--out` resume producing byte-identical hash chains across
+two separate `lqe live` invocations.
 
 **Recipe:**
 ```
-python scripts/run_live_fleet.py \
+lqe live \
   --symbol BTC-USDT --timeframe 1m --poll-seconds 60 \
   --lookback-bars 300 --autonomy-every 5 --n-trials 8 \
-  --llm --llm-model llama3.2:3b --port 8137
+  --llm --llm-model llama3.2:3b --out runs/live-session.jsonl --port 8137
 ```
-Ctrl+C stops it. `--kill-switch <path>` persists the kill state to disk like
-`lqe desk` does. Everything above is still paper-only end to end:
-`PaperBroker` is still the only `ExecutionAdapter`, `make_order` is still the
-only `Order` constructor, ccxt is read-only public data, and there is still
-no kill/clear/order tool in the LLM's vocabulary.
+Ctrl+C stops it; re-run the identical command to resume from `--out`.
+`--kill-switch <path>` persists the kill state to disk like `lqe desk` does.
+Everything above is still paper-only end to end: `PaperBroker` is still the
+only `ExecutionAdapter`, `make_order` is still the only `Order` constructor,
+ccxt is read-only public data, and there is still no kill/clear/order tool in
+the LLM's vocabulary.

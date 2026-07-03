@@ -4,9 +4,9 @@ A **local, paper-only, autonomous quant research simulator**: a large catalog of
 
 **The honest core:** exploration is free in the sandbox, but the equity curve you *watch* (the tracked book) only accepts changes that pass out-of-sample validation, and it de-risks — never chases — on degradation. The **system** learns on history, runs the validated result live, watches live for decay, and re-learns on history when it decays; the LLM steers and explains, the math decides.
 
-## Status: v1.0 (all milestones complete)
+## Status: v2.0 (v1.0's M0–M12 plus v2.0's M13–M17, all complete)
 
-The engine is built — M0–M12 done, verified, and tagged. **To run it, read [USER-GUIDE.md](USER-GUIDE.md)**; to understand how every piece works and how to operate/extend it, read **[COMPONENT-GUIDE.md](COMPONENT-GUIDE.md)**; the release safety/honesty review with evidence is in [M12-RELEASE-REVIEW.md](M12-RELEASE-REVIEW.md); the developer orientation is in [HANDOFF.md](HANDOFF.md).
+The engine is built — M0–M12 (v1.0) and M13–M17 (v2.0, `docs/12-v2-roadmap.md`: a complete catalog, `lqe live` as a real CLI subcommand with resume, and real CI coverage for the LLM/heavy-model path) done, verified, and tagged. **To run it, read [USER-GUIDE.md](USER-GUIDE.md)**; to understand how every piece works and how to operate/extend it, read **[COMPONENT-GUIDE.md](COMPONENT-GUIDE.md)**; the release safety/honesty review with evidence is in [M12-RELEASE-REVIEW.md](M12-RELEASE-REVIEW.md) (v1.0) and [V2-RELEASE-REVIEW.md](V2-RELEASE-REVIEW.md) (v2.0); the developer orientation is in [HANDOFF.md](HANDOFF.md).
 
 ```
 pip install -e ".[ui,search,dev]"
@@ -39,6 +39,7 @@ The sections below are the original **planning package** the engine was built fr
 | 09 | [decision-log-risks-open-questions](09-decision-log-risks-open-questions.md) | Decisions, corrections, risks, open questions |
 | 10 | [production-roadmap](10-production-roadmap.md) | Step-by-step build roadmap: M0–M12, gates, releases |
 | 11 | [technical-spec](11-technical-spec.md) | Implementation contracts: interfaces, schemas, flows |
+| 12 | [v2-roadmap](12-v2-roadmap.md) | Post-v1.0 roadmap: M13–M17 (catalog complete, `lqe live`, CI for the LLM/heavy-model path) |
 
 Mockups (open in a browser): [obsidian-desk-model-floor](mockups/obsidian-desk-model-floor.html) · [neural-engine-3d](mockups/neural-engine-3d.html) · [neural-engine-plasma](mockups/neural-engine-plasma.html) · [neural-engine-holo](mockups/neural-engine-holo.html) · [neural-engine-observatory](mockups/neural-engine-observatory.html)
 

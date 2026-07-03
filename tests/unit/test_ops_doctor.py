@@ -85,3 +85,12 @@ def test_format_report_is_ascii_only() -> None:
     checks = run_health_checks(run_license_gate=False)
     report = format_report(checks)
     report.encode("ascii")  # must not raise — renders on cp1252 consoles
+
+
+def test_doctor_ollama_check_is_informational_never_fail() -> None:
+    """docs/12 M17: Ollama absent is a fully supported state (rule-based
+    fallback, docs/10 M9) -- this check must never be able to FAIL the
+    whole doctor sweep regardless of whether a server happens to be up."""
+    checks = run_health_checks(run_license_gate=False)
+    ollama = next(c for c in checks if c.name == "local LLM (Ollama)")
+    assert ollama.status in ("OK", "WARN")

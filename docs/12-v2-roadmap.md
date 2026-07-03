@@ -46,12 +46,12 @@ Continuation of [`10-production-roadmap.md`](10-production-roadmap.md), which en
 - **Tests:** ✅ the new marker-gated LLM test (verified locally in both the present and absent state, since this repo has no git remote/live GitHub Actions run to point to) · `models-extra` CI job YAML-validated (`yaml.safe_load`) and its equivalent install+suite run verified locally on this machine (Windows; the job itself runs on `ubuntu-latest`, which has no long-path limit to work around) · original `check` lane's install line unchanged, full suite still green (319 tests, 2 correctly skipped for the absent-Ollama case).
 - **Exit gate:** ✅ two CI lanes defined (both YAML-valid; `models-extra` not yet run on a live GitHub Actions runner since the repo has no remote configured) and a documented, verified-both-ways real-LLM test exists; `git tag m16-done`.
 
-## M17 — v2 hardening & release  · S · Dep: M13, M14, M15, M16
-- [ ] Update `HANDOFF.md`, `README.md`, `USER-GUIDE.md`, `COMPONENT-GUIDE.md` to describe `lqe live` as a supported command (not a standalone script), the 51/51 catalog, and the two CI lanes.
-- [ ] Re-run the docs/archive/19 §19.1 safety review + honesty checklist against everything new in M13–M16, same as every v1.0 gate.
-- [ ] `lqe doctor` health check extended to cover the new subcommand's preconditions (Ollama reachable if `--llm` requested, catalog count, etc.) if that fits cleanly — don't force it if it doesn't.
-- **Tests:** full suite green across both CI lanes; determinism/parity/replay hold; license gate green.
-- **Exit gate:** all gates green with evidence; `git tag v2.0`. **→ v2.0 shippable.**
+## M17 — v2 hardening & release  · S · Dep: M13, M14, M15, M16  ✅ `m17-done`
+- [x] Updated `HANDOFF.md`, `README.md`, `USER-GUIDE.md`, `COMPONENT-GUIDE.md` to describe `lqe live` as a supported command (not a standalone script), the 51/51 catalog, `--out`/resume, and the two CI lanes.
+- [x] Re-ran the docs/archive/19 §19.1 safety review + honesty checklist against everything new in M13–M16 → **`V2-RELEASE-REVIEW.md`** (new, mirrors `M12-RELEASE-REVIEW.md`'s structure), every item PASS with file:line/test/command evidence.
+- [x] `lqe doctor` extended with a new `_ollama_check()` (informational WARN/OK, never FAIL — Ollama absent is a fully supported fallback state) — fit cleanly alongside the existing checks, so it was added rather than skipped. `_catalog_check` already reports the admitted/quarantined counts generically, so it needed no change to reflect 51/51.
+- **Tests:** ✅ `tests/unit/test_ops_doctor.py::test_doctor_ollama_check_is_informational_never_fail` (new) · full suite green (312 passed, 8 skipped — all correctly: the 6 present-vs-absent quarantine-inversion pairs from M13 plus the 2 `llm_integration` tests with Ollama not running) · ruff/mypy/license gate green · `lqe doctor` output verified live: `51 registered: 51 admitted, 0 transparently quarantined`.
+- **Exit gate:** ✅ all gates green with evidence (`V2-RELEASE-REVIEW.md`); `git tag v2.0`. **→ v2.0 shippable.**
 
 ---
 

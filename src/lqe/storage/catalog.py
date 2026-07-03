@@ -16,7 +16,7 @@ from typing import Any
 
 import duckdb
 
-from lqe.data.symbols import SymbolRecord
+from lqe.core.types import SymbolRecord
 
 
 class Catalog:

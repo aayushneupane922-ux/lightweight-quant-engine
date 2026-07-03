@@ -11,22 +11,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from lqe.core.types import Symbol, SymbolRecord
 
-from lqe.core.types import Symbol
-
-
-class SymbolRecord(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    canonical: Symbol
-    exchange: str
-    native_symbol: str
-    base: str
-    quote: str
-    active: bool = True
-    listed_at: datetime
-    delisted_at: datetime | None = None
+__all__ = [
+    "SymbolRecord",
+    "SymbolRegistry",
+    "from_ccxt_symbol",
+    "to_ccxt_symbol",
+]
 
 
 def to_ccxt_symbol(canonical: Symbol) -> str:

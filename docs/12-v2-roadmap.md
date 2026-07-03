@@ -12,13 +12,13 @@ Continuation of [`10-production-roadmap.md`](10-production-roadmap.md), which en
 
 ---
 
-## M13 — Complete the model catalog (51/51)  · S · Dep: none
-- [ ] Enable Windows long-path support (`LongPathsEnabled` registry key or equivalent) on this machine — **confirm with owner before editing the registry**, since it's a system-wide (not repo-local) change, even though it's reversible and standard for Python dev on Windows.
-- [ ] Install the 3 remaining `models` extra packages blocked by the path limit: `skfolio`, `PyPortfolioOpt` (`pypfopt`), `riskfolio-lib`.
-- [ ] Remove/update the `@_absent(...)`-decorated skip conditions in `tests/unit/test_heavy_lib_adapter_quarantine.py` that were added specifically for these 3 libs' absence, so the suite reflects a fully-installed environment without lying about what's present.
-- [ ] Confirm `models/catalog_scale.py` admits 51/51 (currently 48/51) via `lqe catalog`.
-- **Tests:** heavy-lib quarantine tests for skfolio/PyPortfolioOpt/riskfolio-lib now exercise the real adapters (not skip) · `lqe catalog` reports 51 admitted · license gate still green with the 3 new deps.
-- **Exit gate:** `lqe catalog` shows 51/51; full suite + ruff + mypy + license gate green; `git tag m13-done`.
+## M13 — Complete the model catalog (51/51)  · S · Dep: none  ✅ `m13-done`
+- [x] Enable Windows long-path support (`LongPathsEnabled` registry key) — done by the owner directly (elevated shell), confirmed via `Get-ItemProperty` before proceeding.
+- [x] Install the 3 remaining `models` extra packages blocked by the path limit: `skfolio`, `PyPortfolioOpt` (`pypfopt`), `riskfolio-lib`. (Pulled in a large transitive chain — cvxpy, vectorbt, matplotlib, astropy, numba, plotly — and downgraded `pandas` 3.0.3→2.3.3; full suite still green after.)
+- [x] `tests/integration/test_catalog_scale.py`'s `test_heavy_lib_models_quarantine_transparently_when_absent` made present-aware (`skipif` on full-install, mirroring the existing `test_heavy_lib_adapter_quarantine.py` pattern) rather than editing that file, since the quarantine-when-absent behavior it tests wasn't specific to these 3 libs; added a new always-relevant counterpart `test_all_51_models_admit_once_the_full_models_extra_is_installed`.
+- [x] Confirmed `models/catalog_scale.py` admits 51/51 (was 48/51) via `lqe catalog`.
+- **Tests:** ✅ full suite green (6 skips, all the now-inverted quarantine-vs-absent pairs) · `lqe catalog` reports 51/51 admitted, 0 quarantined · license gate green (models extra correctly NOT in the scanned runtime closure — `PROMOTED_EXTRAS = ("ui", "search")` by design, unchanged).
+- **Exit gate:** ✅ `lqe catalog` shows 51/51; full suite + ruff + mypy + license gate all green; `git tag m13-done`.
 
 ## M14 — `lqe live` CLI subcommand  · L · Dep: none (parallel to M13)
 - [ ] Port `scripts/run_live_fleet.py`'s argument surface (`--exchange`, `--symbol`, `--timeframe`, `--poll-seconds`, `--lookback-bars`, `--starting-cash`, `--autonomy-every`, `--n-trials`, `--min-periods`, `--llm`, `--llm-model`, `--kill-switch`, `--port`, `--no-browser`) into a real `lqe live` subcommand in `src/lqe/cli.py`, reusing the existing argparse pattern from `lqe backtest`/`lqe autopilot` rather than the script's standalone argparse.

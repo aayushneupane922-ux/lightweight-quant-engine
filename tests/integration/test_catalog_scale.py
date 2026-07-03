@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from importlib.util import find_spec
+
+import pytest
 
 from lqe.backtest.runner import run_backtest
 from lqe.core.events import MarketEvent
@@ -15,6 +18,16 @@ from lqe.core.types import Symbol
 from lqe.models.catalog_scale import build_scaled_catalog
 
 SYMBOL: Symbol = "BTC-USDT"
+
+# Every backing lib the scaled catalog's heavy adapters depend on (docs/10 M13:
+# once the full 'models' extra is installed, e.g. this machine post-M13,
+# nothing quarantines — the assertion below only makes sense when at least
+# one is genuinely absent (e.g. CI, which installs '.[ui,search,dev]' only).
+_HEAVY_LIBS = (
+    "statsmodels", "arch", "hmmlearn", "ruptures", "skfolio", "pypfopt",
+    "riskfolio", "sklearn", "lightgbm",
+)
+_all_present = all(find_spec(name) is not None for name in _HEAVY_LIBS)
 
 
 def _bars(n: int = 200) -> list[MarketEvent]:
@@ -53,6 +66,11 @@ def test_every_admitted_model_is_unproven_until_gated() -> None:
     assert all(e.manifest.status == "unproven" for e in catalog.all())
 
 
+@pytest.mark.skipif(
+    _all_present,
+    reason="full 'models' extra installed; nothing quarantines here — see "
+    "test_all_51_models_admit_once_the_full_models_extra_is_installed",
+)
 def test_heavy_lib_models_quarantine_transparently_when_absent() -> None:
     catalog, _ = build_scaled_catalog(SYMBOL)
     quarantined = catalog.quarantined()
@@ -61,6 +79,16 @@ def test_heavy_lib_models_quarantine_transparently_when_absent() -> None:
     for record in quarantined:
         assert record.reasons
         assert "models" in record.reasons[0]  # the pip install '.[models]' hint
+
+
+@pytest.mark.skipif(
+    not _all_present,
+    reason="requires the full 'models' extra (docs/10 M13) to be installed",
+)
+def test_all_51_models_admit_once_the_full_models_extra_is_installed() -> None:
+    catalog, _ = build_scaled_catalog(SYMBOL)
+    assert not catalog.quarantined()
+    assert len(catalog.all()) == 51
 
 
 def test_the_deliberately_weak_control_is_present() -> None:

@@ -16,7 +16,13 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from lqe.live.control import Command, ControlPlane
-from lqe.storage.state_reader import DecisionCard, StateReader, TapeRow, UIState
+from lqe.storage.state_reader import (
+    DecisionCard,
+    GraphPayload,
+    StateReader,
+    TapeRow,
+    UIState,
+)
 
 _FROZEN = ConfigDict(frozen=True)
 
@@ -93,6 +99,9 @@ class DeskData:
 
     def decision_cards(self, *, limit: int = 30) -> list[DecisionCard]:
         return self._state_reader.decision_cards(limit=limit)
+
+    def graph(self, *, at_seq: int | None = None) -> GraphPayload:
+        return self._state_reader.graph(at_seq=at_seq)
 
     def catalog(self) -> list[CatalogRow]:
         return list(self._catalog_rows)

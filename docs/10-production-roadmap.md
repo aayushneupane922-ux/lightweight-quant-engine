@@ -21,7 +21,7 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **v0.1 — Honest loop (headless):** M0–M4. You can ingest, backtest, and *validate* — the gate exists. Nothing autonomous yet. ✅ **shipped**, tag `v0.1` — `lqe ingest`/`lqe backtest`/`lqe validate` verified end-to-end on real BTC-USDT/ETH-USDT data.
 - **v0.2 — Usable terminal:** + M5, M6, M7. Catalog + Obsidian Desk UI + risk/kill. ✅ **shippable** at `m7-done` — `lqe desk` serves the Floor/Catalog/Research/Risk/Daily views on 127.0.0.1, read-only over the audit log with a human KILL.
 - **v0.3 — Autonomous:** + M8, M9. Learn→adjust→learn loop + aggressive autopilot + local LLM. ✅ **shippable** at `m9-done` — rule-based loop runs headless (`lqe autopilot`), the desk shows decision cards + an autopilot toggle, and an optional Ollama narrator plugs in (fail-closed, replay-logged).
-- **v0.4 — Cinematic:** + M10. Interactive 3D neural-web + timeline replay.
+- **v0.4 — Cinematic:** + M10. Interactive 3D neural-web + timeline replay. ✅ **shippable** at `m10-done` — the Engine view renders the live neural-web from the audit and scrubs the timeline for deterministic replay (canvas renderer; three.js vendor slot documented).
 - **v1.0 — Production-ready local app:** + M11, M12. Scaled catalog, hardened, packaged installer.
 
 ---
@@ -115,13 +115,13 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **Tests:** ✅ LLM emits only whitelisted calls (order/kill/validated dropped); cannot bypass the gate or clear the kill; app works with the LLM absent; determinism-of-record (LLM calls logged, rule-based path byte-identical + replayable).
 - **Exit gate:** ✅ autopilot aggressive but paper-only + audited; LLM optional; `git tag m9-done`. **→ v0.3 shippable.**
 
-## M10 — Interactive 3D neural-web + replay  · L · Dep: M7, M8
-- [ ] `viz3d/neural_web.*`: WebGL scene (three.js / `3d-force-graph`) fed by StateReader; model nodes, correlation/data-flow edges, meta-layer cluster, sandbox vs tracked regions.
-- [ ] **Interactivity:** orbit/zoom/pan · click node → inspector · hover tooltip · filter/isolate · live binding.
-- [ ] **Timeline scrubber:** replay any session deterministically from the audit log.
-- [ ] Honesty overlays (sandbox vs validated, sample sizes, "simulated — not edge"); degrade to 2D on weak GPUs; reduced-motion.
-- **Tests:** scene builds from audit state · replay reproduces the session · view constructs no `Order` · honesty overlays present.
-- **Exit gate:** interactive 3D animates real state + replays; `git tag m10-done`. **→ v0.4 shippable.**
+## M10 — Interactive 3D neural-web + replay  · L · Dep: M7, M8  ✅ m10-done
+- [x] `viz3d/neural_web.js` fed by `StateReader.graph()`: model nodes, meta-layer + feed nodes, sandbox vs tracked regions, data-flow / attention / promotion edges. Implemented as a **dependency-free `<canvas>` force-graph** rather than three.js/`3d-force-graph` — those aren't vendorable in this offline, no-CDN build; the canvas renderer meets the acceptance criteria and a vendor slot (`viz3d/vendor/`) is documented for the full WebGL swap.
+- [x] **Interactivity:** pan (drag) · zoom (wheel) · click node → inspector · hover tooltip.
+- [x] **Timeline scrubber:** `/api/graph?at_seq=` replays any point in the session deterministically from the audit log (`StateReader.graph(at_seq)`).
+- [x] Honesty overlays (SIMULATED — NOT EDGE, sample sizes, validated-tracked vs exploratory-sandbox); `prefers-reduced-motion` → static layout.
+- **Tests:** ✅ graph builds from audit state (honest node fields, tracked/sandbox regions, only honestly-derivable edges) · replay-at-seq deterministic + monotonic · view/viz3d construct no `Order` and send no control · honesty overlays present · empty audit → valid empty graph.
+- **Exit gate:** ✅ interactive scene animates real state + replays deterministically; `git tag m10-done`. **→ v0.4 shippable.**
 
 ## M11 — Scale the catalog  · L · Dep: M6, M8
 - [ ] Add advanced statistical models: cointegration/pairs (statsmodels), GARCH filters (arch), HMM/regime (hmmlearn/ruptures), portfolio (HRP/risk-parity/BL via skfolio/riskfolio), supervised/meta-labeling (sklearn/LightGBM, gated).

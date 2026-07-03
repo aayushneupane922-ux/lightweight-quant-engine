@@ -33,6 +33,10 @@ DEFAULT_PORT = 8137
 _HERE = Path(__file__).resolve().parent
 _TEMPLATES = _HERE / "templates"
 _THEME = _HERE / "theme"
+# The viz3d package (sibling of ui) holds the neural-web scene assets; the
+# app mounts them as static — a read-only file mount, not a code import, so
+# the ui-imports-no-viz3d boundary is preserved.
+_VIZ3D = _HERE.parent / "viz3d"
 
 _VALID_COMMANDS: frozenset[str] = frozenset(
     ["START", "STOP", "KILL", "FREEZE", "FLATTEN", "AUTOPILOT_ON", "AUTOPILOT_OFF"]
@@ -43,6 +47,7 @@ _NAV = [
     ("catalog", "Catalog", "F2", "/catalog"),
     ("research", "Research", "F3", "/research"),
     ("intel", "Intel", "F4", "/intel"),
+    ("engine", "Engine", "F7", "/engine"),
     ("risk", "Risk", "F5", "/risk"),
     ("daily", "Daily", "F6", "/daily"),
 ]
@@ -52,6 +57,7 @@ def create_app(data: DeskData) -> FastAPI:
     app = FastAPI(title="Obsidian Desk", docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(directory=str(_TEMPLATES))
     app.mount("/theme", StaticFiles(directory=str(_THEME)), name="theme")
+    app.mount("/viz3d", StaticFiles(directory=str(_VIZ3D)), name="viz3d")
 
     def _ctx(request: Request, active: str, **extra: Any) -> dict[str, Any]:
         return {
@@ -89,6 +95,10 @@ def create_app(data: DeskData) -> FastAPI:
             request, "intel.html", _ctx(request, "intel", cards=data.decision_cards())
         )
 
+    @app.get("/engine", response_class=HTMLResponse)
+    def engine(request: Request) -> Any:
+        return templates.TemplateResponse(request, "engine.html", _ctx(request, "engine"))
+
     @app.get("/risk", response_class=HTMLResponse)
     def risk(request: Request) -> Any:
         return templates.TemplateResponse(request, "risk.html", _ctx(request, "risk"))
@@ -109,6 +119,11 @@ def create_app(data: DeskData) -> FastAPI:
     def api_tape(after_seq: int = 0) -> JSONResponse:
         rows = [r.model_dump(mode="json") for r in data.tape(after_seq=after_seq)]
         return JSONResponse(rows)
+
+    @app.get("/api/graph")
+    def api_graph(at_seq: int | None = None) -> JSONResponse:
+        # read-only; `at_seq` replays the neural-web at a point in the session
+        return JSONResponse(data.graph(at_seq=at_seq).model_dump(mode="json"))
 
     # --- the single write path -------------------------------------------
 

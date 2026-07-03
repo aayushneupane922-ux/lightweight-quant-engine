@@ -115,7 +115,7 @@
     }
     // keyboard-first mode switching (F1..F6 -> nav hrefs)
     document.addEventListener("keydown", function (e) {
-      var map = { F1: "/", F2: "/catalog", F3: "/research", F4: "/intel", F5: "/risk", F6: "/daily" };
+      var map = { F1: "/", F2: "/catalog", F3: "/research", F4: "/intel", F5: "/risk", F6: "/daily", F7: "/engine" };
       if (map[e.key]) { e.preventDefault(); location.href = map[e.key]; }
     });
     connect();

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Engine{% endblock %}
+{% block main %}
+<div class="head">
+  <h1>Engine · Neural Web</h1>
+  <span class="sub">force-directed view of the live system state · scrub the timeline to replay</span>
+</div>
+<div class="honesty">
+  <span class="tag">SIMULATED — NOT EDGE</span>
+  Nodes are models (size = attention, colour = state), edges are data-flow / meta attention / gate
+  promotions. The bright right region is the <b>validated tracked</b> core; the dim left swarm is
+  <b>exploratory / unvalidated</b> sandbox. Node stats show sample sizes.
+</div>
+
+<div class="web-wrap">
+  <div class="web-canvas"><canvas id="web"></canvas></div>
+  <div class="web-side">
+    <h2>◇ Inspector</h2>
+    <div id="inspector-body"><div class="mute">Hover or click a node.</div></div>
+    <div class="legend">
+      <div><span class="dot" style="background:#35C08B"></span>long / validated</div>
+      <div><span class="dot" style="background:#F0524D"></span>short / halted</div>
+      <div><span class="dot" style="background:#F0A62A"></span>fired</div>
+      <div><span class="dot" style="background:#6B7A90"></span>armed</div>
+      <div><span class="dot" style="background:#7C7BF2"></span>meta-layer</div>
+    </div>
+  </div>
+</div>
+
+<div class="scrub">
+  <span class="mono" id="seq-label">seq 0 / 0</span>
+  <input type="range" id="scrubber" min="0" max="0" value="0" step="1">
+  <span class="mute">timeline replay (deterministic)</span>
+</div>
+{% endblock %}
+
+{% block inspector %}
+<h2>◇ Neural Web</h2>
+<div class="narr">
+  Drag to pan · scroll to zoom · click a node to inspect. The scrubber replays the session from the
+  audit log — determinism makes the replay exact. Read-only: this view sends no commands and
+  constructs no order.
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/viz3d/neural_web.js"></script>
+{% endblock %}

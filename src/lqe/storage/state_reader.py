@@ -115,6 +115,48 @@ class DecisionCard(BaseModel):
     narration: str
 
 
+NodeKind = Literal["tracked", "sandbox", "meta", "regime"]
+LinkKind = Literal["corr+", "corr-", "dataflow", "attention", "promotion"]
+
+
+class GraphNode(BaseModel):
+    """One node of the 3D neural-web (docs/11 §11.9). Honesty fields
+    (`n_trades`, `status`) are always present; a rising tracked core reads
+    as `validated`, a churning sandbox as `unproven`."""
+
+    model_config = _FROZEN
+    id: str
+    label: str
+    family: str
+    kind: NodeKind
+    state: ModelState
+    conviction: float  # 0..1, a display heuristic (attention/evidence), never P&L
+    sim_return: float
+    n_trades: int
+    status: ModelStatus
+
+
+class GraphLink(BaseModel):
+    model_config = _FROZEN
+    source: str
+    target: str
+    kind: LinkKind
+    weight: float  # 0..1
+
+
+class GraphPayload(BaseModel):
+    """docs/11 §11.9. Read-only; `simulated` is a hard-coded honesty flag."""
+
+    model_config = _FROZEN
+    run_id: str
+    simulated: Literal[True] = True
+    at_seq: int
+    max_seq: int
+    nodes: list[GraphNode]
+    links: list[GraphLink]
+    regions: dict[str, list[str]]  # {"tracked": [...ids], "sandbox": [...ids]}
+
+
 class StateReader:
     def __init__(
         self,
@@ -191,6 +233,140 @@ class StateReader:
                 cards[-1].absorb(t, env.payload)
         built = [c.build() for c in cards]
         return list(reversed(built))[:limit]
+
+    # -- 3D neural-web graph ----------------------------------------------
+
+    def graph(self, *, at_seq: int | None = None) -> GraphPayload:
+        """The neural-web graph (docs/11 §11.9), rebuilt from the audit up to
+        `at_seq` (inclusive) — passing an earlier seq replays the graph at
+        that point in the session, deterministically. Only edges that are
+        *honestly derivable* from the audit are emitted: `dataflow`
+        (feed→models), `attention` (meta→models it explored), and
+        `promotion` (meta→a model that crossed the gate). Live inter-model
+        `corr±` edges need per-model concurrent return series (M11) and are
+        deliberately omitted rather than faked."""
+        max_seq = self._records[-1].seq if self._records else 0
+        effective = max_seq if at_seq is None else at_seq
+        records = [r for r in self._records if r.seq <= effective]
+        recon = _Reconstruction(records, self._catalog)
+        cells = {c.model_id: c for c in recon.model_cells()}
+
+        promoted: set[str] = set()
+        de_risked: set[str] = set()
+        explored: set[str] = set()
+        attention: dict[str, int] = defaultdict(int)
+        meta_present = False
+        for env in records:
+            t = env.type
+            if t == "PromotionEvent":
+                model = _model_from_candidate(str(env.payload.get("candidate_id", "")))
+                if model:
+                    promoted.add(model)
+            elif t == "HypothesisEvent":
+                meta_present = True
+                for m in env.payload.get("target_models") or []:
+                    attention[str(m)] += 1
+                    explored.add(str(m))
+            elif t == "DeRiskEvent":
+                for m in env.payload.get("models") or []:
+                    de_risked.add(str(m))
+            elif t == "LlmCallEvent":
+                meta_present = True
+
+        # Model identity comes from both surfaces: trading audits give live
+        # cells (state/return/trades); an autopilot audit only names models
+        # in its autonomy events. Union them so the graph works for either.
+        all_ids = sorted(set(cells) | explored | promoted | de_risked)
+
+        nodes: list[GraphNode] = []
+        links: list[GraphLink] = []
+        tracked_ids: list[str] = []
+        sandbox_ids: list[str] = []
+
+        for model_id in all_ids:
+            is_tracked = model_id in promoted
+            (tracked_ids if is_tracked else sandbox_ids).append(model_id)
+            cell = cells.get(model_id)
+            if cell is not None:
+                state = cell.state
+                sim_return = cell.sim_return_pct if cell.sim_return_pct is not None else 0.0
+                n_trades = cell.n_trades
+                family = cell.family
+                status: ModelStatus = "validated" if is_tracked else cell.status
+            else:
+                state = "HALTED" if model_id in de_risked else ("FIRED" if is_tracked else "ARMED")
+                sim_return, n_trades, family = 0.0, 0, "—"
+                status = "validated" if is_tracked else "unproven"
+            activity = n_trades or (1 if model_id in explored else 0)
+            nodes.append(
+                GraphNode(
+                    id=model_id, label=model_id, family=family,
+                    kind="tracked" if is_tracked else "sandbox", state=state,
+                    conviction=_conviction(is_tracked, activity),
+                    sim_return=sim_return, n_trades=n_trades, status=status,
+                )
+            )
+
+        node_ids = {n.id for n in nodes}
+        if nodes:
+            nodes.append(_structural_node("feed", "Market feed", "regime"))
+            for model_id in all_ids:
+                links.append(
+                    GraphLink(source="feed", target=model_id, kind="dataflow", weight=0.4)
+                )
+
+        if meta_present:
+            nodes.append(_structural_node("meta", "Meta-layer", "meta"))
+            max_att = max(attention.values(), default=1)
+            for model_id, count in attention.items():
+                if model_id in node_ids:
+                    links.append(
+                        GraphLink(
+                            source="meta", target=model_id, kind="attention",
+                            weight=round(count / max_att, 3),
+                        )
+                    )
+            for model_id in sorted(promoted):
+                if model_id in node_ids:
+                    links.append(
+                        GraphLink(source="meta", target=model_id, kind="promotion", weight=1.0)
+                    )
+
+        return GraphPayload(
+            run_id=self._run_id,
+            at_seq=effective,
+            max_seq=max_seq,
+            nodes=nodes,
+            links=links,
+            regions={"tracked": tracked_ids, "sandbox": sandbox_ids},
+        )
+
+
+# --- graph helpers --------------------------------------------------------
+
+
+def _conviction(is_tracked: bool, n_trades: int) -> float:
+    """A display heuristic for node prominence (docs/05 §5.5) — attention/
+    evidence, explicitly NOT P&L. Validated (tracked) models read strongest;
+    an idle model reads faint."""
+    if is_tracked:
+        return 0.9
+    if n_trades > 0:
+        return 0.5
+    return 0.2
+
+
+def _structural_node(node_id: str, label: str, kind: NodeKind) -> GraphNode:
+    return GraphNode(
+        id=node_id, label=label, family="—", kind=kind, state="ARMED",
+        conviction=0.5, sim_return=0.0, n_trades=0, status="unproven",
+    )
+
+
+def _model_from_candidate(candidate_id: str) -> str:
+    """`candidate_id` is `cand:<model_id>:<step>` (orchestrator convention)."""
+    parts = candidate_id.split(":")
+    return parts[1] if len(parts) >= 2 else ""
 
 
 # --- decision-card assembly -----------------------------------------------

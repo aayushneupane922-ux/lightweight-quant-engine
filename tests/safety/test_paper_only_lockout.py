@@ -14,6 +14,12 @@ VALID_CONFIG: dict[str, object] = {
         "starting_cash": Decimal("10000"),
     },
     "execution": {"adapter": "paper"},
+    "data": {
+        "adapter": "ccxt",
+        "exchange": "binance",
+        "symbols": ["BTC-USDT"],
+        "timeframe": "1m",
+    },
 }
 
 

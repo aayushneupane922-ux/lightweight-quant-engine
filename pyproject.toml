@@ -6,19 +6,23 @@ requires-python = ">=3.12"
 dependencies = [
   "pydantic>=2",       # MIT — config/schema validation, events
   "structlog",         # Apache-2.0/MIT — structured audit logging
+  "ccxt",              # MIT — crypto market data (public endpoints only, M2)
+  "duckdb",            # MIT — local OLAP catalog over Parquet (M2)
+  "pyarrow",           # Apache-2.0 — Parquet/Arrow storage (M2)
+  "tzdata",            # Apache-2.0/public-domain (CLDR) — IANA tz database;
+                       # required by zoneinfo on platforms with no system
+                       # tz database (Windows), needed to round-trip UTC
+                       # timestamps through pyarrow/Parquet
 ]
 
-# The full stack from docs/07 (Cost, Stack & Local LLM) lands milestone-by-milestone
-# as the modules that need it are built. Declared here for reference/pin-planning;
-# not imported by src/lqe until its owning milestone.
+# The rest of the docs/07 (Cost, Stack & Local LLM) stack lands milestone-by-
+# milestone as the modules that need it are built. Declared here for
+# reference/pin-planning; not imported by src/lqe until its owning milestone.
 [project.optional-dependencies]
 data = [
-  "ccxt",              # MIT — crypto market data (public endpoints only, M2)
-  "duckdb",            # MIT — local OLAP over Parquet (M2)
-  "polars",            # MIT — fast dataframes (M2)
-  "pyarrow",           # Apache-2.0 — Parquet/Arrow (M2)
-  "pandas",            # BSD-3 (M2)
-  "numpy",             # BSD-3 (M2)
+  "polars",            # MIT — fast dataframes, once a milestone needs vectorized transforms
+  "pandas",            # BSD-3
+  "numpy",             # BSD-3
 ]
 models = [
   "pandas-ta",         # MIT — indicators (M3/M6)
@@ -72,6 +76,16 @@ python_version = "3.12"
 strict = true
 mypy_path = "src"
 explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = "ccxt.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# pyarrow's parquet read/write entrypoints aren't fully annotated;
+# scoped narrowly to the one module that calls into them.
+module = "lqe.storage.parquet"
+disallow_untyped_calls = false
 
 [tool.pytest.ini_options]
 addopts = "-q"

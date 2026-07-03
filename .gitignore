@@ -7,8 +7,9 @@ __pycache__/
 *.egg-info/
 
 # local data & run artifacts (never commit market data or audit logs)
-data/
-runs/
+# anchored to repo root — unanchored "data/" would also match src/lqe/data/
+/data/
+/runs/
 *.duckdb
 *.parquet
 *.jsonl

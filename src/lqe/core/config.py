@@ -1,9 +1,8 @@
 """Pydantic config with the paper-only lockout (docs/11 §11.5).
 
-Only the `engine` + `execution` sections exist yet — `data`/`strategies`/
-`risk`/`autopilot`/`reporting` join the schema as the milestones that use
-them (M2/M3/M5/M8/M12) land, so this schema never carries a config knob
-nothing reads.
+`engine`/`execution`/`data` exist now — `strategies`/`risk`/`autopilot`/
+`reporting` join the schema as the milestones that use them (M3/M5/M8/M12)
+land, so this schema never carries a config knob nothing reads.
 
 `engine.mode` and `execution.adapter` are closed `Literal`s: pydantic
 rejects any value outside them at validation time, so `mode: live` (or any
@@ -18,6 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from lqe.core.errors import ConfigError, LockoutViolation
+from lqe.core.types import Symbol, Timeframe
 
 _FROZEN = ConfigDict(frozen=True)
 
@@ -38,11 +38,22 @@ class ExecutionConfig(BaseModel):
     adapter: Literal["paper"]
 
 
+class DataConfig(BaseModel):
+    model_config = _FROZEN
+
+    adapter: Literal["ccxt", "csv_replay"]
+    exchange: str
+    symbols: list[Symbol]
+    timeframe: Timeframe
+    replay_bundle: str | None = None
+
+
 class Config(BaseModel):
     model_config = _FROZEN
 
     engine: EngineConfig
     execution: ExecutionConfig
+    data: DataConfig
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> Config:

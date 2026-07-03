@@ -31,7 +31,13 @@ from lqe.analytics.metrics import returns_from_equity, sharpe_ratio
 from lqe.analytics.registry import ExperimentRegistry
 from lqe.autonomy.books import TrackedBook
 from lqe.autonomy.drift import DriftMonitor
-from lqe.autonomy.optimizer import OptunaOptimizer, SearchSpace
+from lqe.autonomy.narrator import (
+    HypothesisContext,
+    Narrator,
+    OutcomeContext,
+    RuleBasedNarrator,
+)
+from lqe.autonomy.optimizer import OptunaOptimizer, SearchSpace, safe_search_space
 from lqe.autonomy.promotion_gate import GateResult, PromotionGate
 from lqe.autonomy.searchable import SearchableModel
 from lqe.autonomy.validator import PromotionCandidate, Validator
@@ -40,6 +46,7 @@ from lqe.core.clock import ManualClock
 from lqe.core.engine import Engine
 from lqe.core.events import (
     HypothesisEvent,
+    LlmCallEvent,
     NarrationEvent,
     TrialEvent,
     ValidationEvent,
@@ -87,6 +94,10 @@ class Orchestrator:
     tracked_book: TrackedBook = field(default_factory=TrackedBook)
     de_risk: DeRiskController = field(default_factory=DeRiskController)
     drift_monitor: DriftMonitor = field(default_factory=DriftMonitor)
+    # The reasoning/explanation layer. Rule-based by default (deterministic,
+    # no LLM); an OllamaNarrator only *proposes* safe range refinements and
+    # narration — it never optimizes, judges, orders, or clears the kill.
+    narrator: Narrator = field(default_factory=RuleBasedNarrator)
     # Optional persistent trial provenance (docs/03 §3.6): when supplied,
     # every trial is recorded and the honest trial count that feeds DSR/PBO
     # is *seeded from prior campaigns*, so re-searching the same data can't
@@ -116,8 +127,8 @@ class Orchestrator:
         focus = self.searchable_models[(step - 1) % len(self.searchable_models)]
 
         degraded, drift_reasons = self._observe(focus, now)
-        hypo_id = self._hypothesize(focus, step, degraded, drift_reasons)
-        study_id, best_params, best_value = self._search(focus, step, hypo_id)
+        hypo_id, space = self._hypothesize(focus, step, degraded, drift_reasons)
+        study_id, best_params, best_value = self._search(focus, step, hypo_id, space)
         candidate = self._candidate(focus, step, hypo_id, study_id, best_params)
         gate_result = self._validate(focus, candidate)
         promoted = self._decide(focus, candidate, best_params, gate_result, now)
@@ -163,8 +174,23 @@ class Orchestrator:
 
     def _hypothesize(
         self, focus: SearchableModel, step: int, degraded: bool, reasons: list[str]
-    ) -> str:
+    ) -> tuple[str, SearchSpace]:
         hypo_id = f"hypo:{focus.model_id}:{step}"
+        # The narrator may propose narrower ranges; safe_search_space clamps
+        # them inside the model's vetted defaults, so the space actually
+        # searched can only ever be a safe refinement of the manifest.
+        ctx = HypothesisContext(
+            model_id=focus.model_id,
+            family=focus.family,
+            default_ranges={n: (r.low, r.high) for n, r in focus.space.ranges.items()},
+            degraded=degraded,
+            drift_reasons=tuple(reasons),
+            step=step,
+        )
+        proposed = self.narrator.propose_ranges(ctx)
+        self._audit_llm_calls()
+        space = safe_search_space(focus.space, proposed)
+
         rationale = (
             f"degradation on tracked {focus.model_id} ({', '.join(reasons)}); "
             "re-searching for a gate-passed replacement"
@@ -177,18 +203,18 @@ class Orchestrator:
                 hypo_id=hypo_id,
                 rationale=rationale,
                 target_models=[focus.model_id],
-                proposed_space=_space_to_dict(focus.space),
+                proposed_space=_space_to_dict(space),
                 regime="unclassified",
             ),
         )
-        return hypo_id
+        return hypo_id, space
 
     def _search(
-        self, focus: SearchableModel, step: int, hypo_id: str
+        self, focus: SearchableModel, step: int, hypo_id: str, space: SearchSpace
     ) -> tuple[str, dict[str, Any], float]:
         study_id = f"study:{focus.model_id}:{step}"
         result = self.optimizer.study(
-            focus.space, self._objective(focus), n_trials=self.n_trials, seed=self.seed + step
+            space, self._objective(focus), n_trials=self.n_trials, seed=self.seed + step
         )
         for trial in result.trials:
             self._n_trials_context += 1
@@ -287,25 +313,42 @@ class Orchestrator:
     def _narrate(
         self, focus: SearchableModel, degraded: bool, gate_result: GateResult, promoted: bool
     ) -> str:
-        prefix = (
-            f"{focus.model_id} degraded on the tracked book; de-risked and re-validated. "
-            if degraded
-            else f"Explored {focus.model_id}. "
+        fail_reasons = tuple(str(r) for r in gate_result.evidence.get("fail_reasons", []))
+        ctx = OutcomeContext(
+            model_id=focus.model_id,
+            degraded=degraded,
+            verdict=gate_result.verdict,
+            promoted=promoted,
+            dsr=gate_result.dsr,
+            pbo=gate_result.pbo,
+            fail_reasons=fail_reasons,
         )
-        if promoted:
-            body = (
-                f"Candidate PASSED the gate (dsr={gate_result.dsr:.2f}, "
-                f"pbo={gate_result.pbo:.2f}) and was promoted to the tracked book."
-            )
-        else:
-            reasons = gate_result.evidence.get("fail_reasons", [])
-            why = ", ".join(reasons) or "n/a"
-            body = f"Candidate FAILED the gate — not promoted. Reasons: {why}."
-        narration = prefix + body
+        narration = self.narrator.narrate(ctx)
+        self._audit_llm_calls()
         self.engine.emit("NarrationEvent", NarrationEvent(text=narration, refs=[]))
         return narration
 
     # -- helpers ----------------------------------------------------------
+
+    def _audit_llm_calls(self) -> None:
+        """Drain any LLM exchanges the narrator just made and log each as an
+        `LlmCallEvent` (docs/11 §11.8), so the session replays from the
+        recorded decision rather than re-invoking the stochastic model. The
+        rule-based narrator drains nothing — the audit is unchanged from M8."""
+        for call in self.narrator.drain_calls():
+            self.engine.emit(
+                "LlmCallEvent",
+                LlmCallEvent(
+                    purpose=call.purpose,
+                    model=call.model,
+                    temperature=call.temperature,
+                    seed=call.seed,
+                    prompt=call.prompt,
+                    response=call.response,
+                    accepted_tools=call.accepted_tools,
+                    rejected=call.rejected,
+                ),
+            )
 
     def _objective(self, focus: SearchableModel) -> Any:
         def objective(params: dict[str, Any]) -> float:

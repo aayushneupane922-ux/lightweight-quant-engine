@@ -63,6 +63,33 @@ def _import_optuna() -> Any:
     return optuna
 
 
+def safe_search_space(default: SearchSpace, proposed_ranges: dict[str, list[float]]) -> SearchSpace:
+    """Merge an LLM-proposed range dict into a model's default space, safely
+    (docs/02 §2.5). A proposal may only *narrow* the vetted defaults: each
+    proposed `[lo, hi]` is clamped to lie inside the manifest's default
+    bounds, and anything malformed or inverted is ignored in favour of the
+    default. So the LLM can refine the search but can never escape the
+    sane, pre-vetted parameter ranges — its influence is bounded by
+    construction, not by a runtime hope.
+    """
+    merged: dict[str, ParamRange] = {}
+    for name, rng in default.ranges.items():
+        proposal = proposed_ranges.get(name)
+        merged[name] = _clamp_range(rng, proposal)
+    return SearchSpace(model_id=default.model_id, ranges=merged)
+
+
+def _clamp_range(default: ParamRange, proposal: list[float] | None) -> ParamRange:
+    if not isinstance(proposal, list) or len(proposal) != 2:
+        return default
+    lo, hi = min(proposal), max(proposal)
+    lo = max(default.low, lo)
+    hi = min(default.high, hi)
+    if not lo < hi:
+        return default  # degenerate after clamping -> keep the vetted default
+    return ParamRange(low=lo, high=hi, is_int=default.is_int)
+
+
 class OptunaOptimizer:
     def study(
         self, space: SearchSpace, objective: Objective, *, n_trials: int, seed: int

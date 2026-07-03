@@ -42,6 +42,7 @@ _NAV = [
     ("floor", "Floor", "F1", "/"),
     ("catalog", "Catalog", "F2", "/catalog"),
     ("research", "Research", "F3", "/research"),
+    ("intel", "Intel", "F4", "/intel"),
     ("risk", "Risk", "F5", "/risk"),
     ("daily", "Daily", "F6", "/daily"),
 ]
@@ -59,6 +60,7 @@ def create_app(data: DeskData) -> FastAPI:
             "active": active,
             "snapshot": data.snapshot(),
             "kill_active": data.kill_active,
+            "autopilot_on": data.autopilot_on,
             **extra,
         }
 
@@ -79,6 +81,12 @@ def create_app(data: DeskData) -> FastAPI:
     def research(request: Request) -> Any:
         return templates.TemplateResponse(
             request, "research.html", _ctx(request, "research", rows=data.experiments())
+        )
+
+    @app.get("/intel", response_class=HTMLResponse)
+    def intel(request: Request) -> Any:
+        return templates.TemplateResponse(
+            request, "intel.html", _ctx(request, "intel", cards=data.decision_cards())
         )
 
     @app.get("/risk", response_class=HTMLResponse)

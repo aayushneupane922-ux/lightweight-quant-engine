@@ -52,6 +52,31 @@ a { color:inherit; text-decoration:none; }
   padding:7px 14px; border-radius:3px; cursor:pointer; }
 .kill:hover { background:rgba(240,82,77,.12); }
 .kill.armed { background:var(--short); color:var(--void); }
+.autopilot { background:transparent; border:1px solid var(--ridge); color:var(--mute);
+  font-family:var(--data); font-weight:700; letter-spacing:.12em; font-size:10px;
+  padding:6px 11px; border-radius:3px; cursor:pointer; }
+.autopilot.on { border-color:var(--intel); color:var(--intel); background:rgba(124,123,242,.1);
+  box-shadow:0 0 10px rgba(124,123,242,.25); }
+.autopilot:hover { color:var(--ink); }
+
+/* decision cards (Intelligence view) */
+.cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
+.card { background:var(--slab); border:1px solid var(--ridge); border-left:2px solid var(--intel);
+  border-radius:5px; padding:12px 13px; }
+.card .ch { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+.card .cm { font-weight:600; font-size:13px; }
+.card .cr { color:var(--mute); font-size:11px; line-height:1.5; margin-bottom:9px; }
+.card .stages { display:flex; gap:6px; align-items:center; font-family:var(--data); font-size:9.5px;
+  letter-spacing:.04em; flex-wrap:wrap; }
+.card .stage { color:var(--mute); border:1px solid var(--ridge); border-radius:3px; padding:2px 6px; }
+.card .stage.done { color:var(--ink); }
+.card .arrow { color:var(--mute); opacity:.5; }
+.card .cn { margin-top:9px; padding-top:8px; border-top:1px solid var(--ridge);
+  color:#c7ccd6; font-size:11px; line-height:1.5; }
+.card .llm { color:var(--intel); font-family:var(--data); font-size:8.5px; letter-spacing:.1em;
+  border:1px solid rgba(124,123,242,.4); border-radius:3px; padding:1px 5px; }
+.card .rule { color:var(--mute); font-family:var(--data); font-size:8.5px; letter-spacing:.1em;
+  border:1px solid var(--ridge); border-radius:3px; padding:1px 5px; }
 
 /* body layout */
 .body { display:grid; grid-template-columns:64px 1fr 320px; min-height:0; }

@@ -33,6 +33,7 @@ class ControlPlane:
     def __init__(self, *, kill_switch: KillSwitch | None = None) -> None:
         self._kill_switch = kill_switch or KillSwitch.in_memory()
         self._log: list[ControlEvent] = []
+        self._autopilot_on = False
 
     @property
     def kill_active(self) -> bool:
@@ -41,6 +42,13 @@ class ControlPlane:
     @property
     def kill_reason(self) -> str:
         return self._kill_switch.reason
+
+    @property
+    def autopilot_on(self) -> bool:
+        """Whether autonomous management is engaged. Flipping this OFF is the
+        UI's "take the wheel" (docs/02 §2.3); it never overrides the kill
+        switch, which halts autonomy regardless of this flag."""
+        return self._autopilot_on and not self._kill_switch.active
 
     def submit(
         self, command: Command, *, source: str, operator: str, note: str = ""
@@ -53,6 +61,10 @@ class ControlPlane:
 
         if command == "KILL":
             self._kill_switch.trigger(reason=note or f"manual KILL by {operator or source}")
+        elif command == "AUTOPILOT_ON":
+            self._autopilot_on = True
+        elif command in ("AUTOPILOT_OFF", "STOP", "FREEZE"):
+            self._autopilot_on = False  # take-the-wheel / halt disengages autonomy
 
         event = ControlEvent(command=command, source=source, operator=operator, note=note)
         self._log.append(event)

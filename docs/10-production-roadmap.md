@@ -20,7 +20,7 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 ## Release checkpoints (thin-slice first)
 - **v0.1 — Honest loop (headless):** M0–M4. You can ingest, backtest, and *validate* — the gate exists. Nothing autonomous yet. ✅ **shipped**, tag `v0.1` — `lqe ingest`/`lqe backtest`/`lqe validate` verified end-to-end on real BTC-USDT/ETH-USDT data.
 - **v0.2 — Usable terminal:** + M5, M6, M7. Catalog + Obsidian Desk UI + risk/kill. ✅ **shippable** at `m7-done` — `lqe desk` serves the Floor/Catalog/Research/Risk/Daily views on 127.0.0.1, read-only over the audit log with a human KILL.
-- **v0.3 — Autonomous:** + M8, M9. Learn→adjust→learn loop + aggressive autopilot + local LLM.
+- **v0.3 — Autonomous:** + M8, M9. Learn→adjust→learn loop + aggressive autopilot + local LLM. ✅ **shippable** at `m9-done` — rule-based loop runs headless (`lqe autopilot`), the desk shows decision cards + an autopilot toggle, and an optional Ollama narrator plugs in (fail-closed, replay-logged).
 - **v0.4 — Cinematic:** + M10. Interactive 3D neural-web + timeline replay.
 - **v1.0 — Production-ready local app:** + M11, M12. Scaled catalog, hardened, packaged installer.
 
@@ -107,12 +107,13 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **Tests:** ✅ loop runs all phases, all audited + replayable · gate un-bypassable (strict thresholds → nothing promoted) · degradation de-risks then re-validates (failed re-validation leaves the tracked config untouched) · Optuna seeded/reproducible · sandbox≠tracked.
 - **Exit gate:** ✅ autonomous rule-based loop promotes only gate-passed configs; audit persists + reloads + re-verifies; `git tag m8-done`.
 
-## M9 — Autopilot + local LLM  · M · Dep: M7, M8
-- [ ] Autopilot toggle (aggressive) + decision cards (hypothesis→search→validate→promote/kill) in the UI; take-the-wheel; human kill un-overridable.
-- [ ] `autonomy/narrator.py`: Ollama local LLM emitting **structured tool calls** (propose_space/run_trials/promote_if_valid/de_risk/narrate); low temperature; prompt+response logged.
-- [ ] Rule-based fallback when no LLM present (templated narration).
-- **Tests:** LLM emits only structured calls/text; cannot size/order (assert); cannot bypass gate or disable kill; app works with LLM absent; determinism-of-record (actions logged, session replays).
-- **Exit gate:** autopilot runs aggressively but paper-only + audited; LLM optional; `git tag m9-done`. **→ v0.3 shippable.**
+## M9 — Autopilot + local LLM  · M · Dep: M7, M8  ✅ m9-done
+- [x] Autopilot toggle (Intel view + status-rail) → AUTOPILOT_ON/OFF via the whitelisted `ControlPlane`; decision cards (hypothesis→search→validate→promote/kill) rendered read-only from the audit; take-the-wheel = toggle OFF; the human KILL forces autopilot off and is un-overridable.
+- [x] `autonomy/narrator.py`: optional Ollama local LLM (loopback HTTP via stdlib — no new dependency) emitting **structured tool calls**; low temperature; every call logged as an `LlmCallEvent` (prompt+response+model+seed+temperature) for replay-of-record.
+- [x] `autonomy/tools.py`: the five tool calls + a **fail-closed** parser — the safety boundary. No order/kill/validated tool exists, so the LLM cannot express them; malformed/dangerous output is dropped.
+- [x] Rule-based fallback (default, deterministic, templated) when no LLM is present or reachable; LLM range proposals are clamped to safe refinements of the vetted defaults (`safe_search_space`).
+- **Tests:** ✅ LLM emits only whitelisted calls (order/kill/validated dropped); cannot bypass the gate or clear the kill; app works with the LLM absent; determinism-of-record (LLM calls logged, rule-based path byte-identical + replayable).
+- **Exit gate:** ✅ autopilot aggressive but paper-only + audited; LLM optional; `git tag m9-done`. **→ v0.3 shippable.**
 
 ## M10 — Interactive 3D neural-web + replay  · L · Dep: M7, M8
 - [ ] `viz3d/neural_web.*`: WebGL scene (three.js / `3d-force-graph`) fed by StateReader; model nodes, correlation/data-flow edges, meta-layer cluster, sandbox vs tracked regions.

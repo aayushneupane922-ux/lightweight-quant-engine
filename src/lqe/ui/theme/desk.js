@@ -89,6 +89,16 @@
     }).then(function () { location.reload(); });
   }
 
+  function autopilot(command) {
+    // no operator prompt for a non-destructive toggle; the audited
+    // ControlEvent records source=ui
+    fetch("/api/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: command, operator: "desk-operator" }),
+    }).then(function () { location.reload(); });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var kill = document.getElementById("kill-btn");
     if (kill) {
@@ -96,9 +106,16 @@
         control(kill.classList.contains("armed") ? "CLEAR_KILL" : "KILL");
       });
     }
+    var ap = document.getElementById("autopilot-btn");
+    if (ap) {
+      ap.addEventListener("click", function () {
+        // toggling OFF is "take the wheel"; ON engages autonomous management
+        autopilot(ap.classList.contains("on") ? "AUTOPILOT_OFF" : "AUTOPILOT_ON");
+      });
+    }
     // keyboard-first mode switching (F1..F6 -> nav hrefs)
     document.addEventListener("keydown", function (e) {
-      var map = { F1: "/", F2: "/catalog", F3: "/research", F5: "/risk", F6: "/daily" };
+      var map = { F1: "/", F2: "/catalog", F3: "/research", F4: "/intel", F5: "/risk", F6: "/daily" };
       if (map[e.key]) { e.preventDefault(); location.href = map[e.key]; }
     });
     connect();

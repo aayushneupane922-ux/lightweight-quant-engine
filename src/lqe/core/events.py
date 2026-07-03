@@ -171,6 +171,23 @@ class NarrationEvent(EventPayload):
     refs: list[str] = []
 
 
+class LlmCallEvent(EventPayload):
+    """Provenance for one LLM interaction (docs/11 §11.8): the prompt,
+    response, model, and sampling settings are logged so a session replays
+    by re-applying the recorded decision, never by re-invoking the
+    stochastic model. `accepted_tools`/`rejected` record how the fail-closed
+    parser treated the output."""
+
+    purpose: str
+    model: str
+    temperature: float
+    seed: int
+    prompt: str
+    response: str
+    accepted_tools: list[str] = []
+    rejected: int = 0
+
+
 # --- envelope --------------------------------------------------------------
 
 

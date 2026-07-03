@@ -16,7 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from lqe.live.control import Command, ControlPlane
-from lqe.storage.state_reader import StateReader, TapeRow, UIState
+from lqe.storage.state_reader import DecisionCard, StateReader, TapeRow, UIState
 
 _FROZEN = ConfigDict(frozen=True)
 
@@ -91,6 +91,9 @@ class DeskData:
     def tape(self, *, after_seq: int = 0, limit: int = 200) -> list[TapeRow]:
         return self._state_reader.tape(after_seq=after_seq, limit=limit)
 
+    def decision_cards(self, *, limit: int = 30) -> list[DecisionCard]:
+        return self._state_reader.decision_cards(limit=limit)
+
     def catalog(self) -> list[CatalogRow]:
         return list(self._catalog_rows)
 
@@ -103,6 +106,10 @@ class DeskData:
     @property
     def kill_active(self) -> bool:
         return self._control.kill_active
+
+    @property
+    def autopilot_on(self) -> bool:
+        return self._control.autopilot_on
 
     def submit_control(
         self, command: Command, *, source: str, operator: str, note: str = ""

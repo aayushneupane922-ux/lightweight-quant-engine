@@ -25,6 +25,10 @@
       <span class="v mono" id="session-exposure">{% if snapshot.session %}{{ "%.2f"|format(snapshot.session.exposure) }}×{% else %}—{% endif %}</span></span>
     <span class="stat"><span class="k">Drawdown</span>
       <span class="v mono neg" id="session-dd">{% if snapshot.session %}−{{ "%.1f"|format(snapshot.session.drawdown * 100) }}%{% else %}—{% endif %}</span></span>
+    <button class="autopilot{% if autopilot_on %} on{% endif %}" id="autopilot-btn"
+            title="Autonomous management (paper-only, audited). Toggle OFF to take the wheel.">
+      AUTOPILOT {% if autopilot_on %}ON{% else %}OFF{% endif %}
+    </button>
     <span class="shield">PAPER · LIVE LOCKED</span>
     <button class="kill{% if kill_active %} armed{% endif %}" id="kill-btn">{% if kill_active %}KILLED{% else %}KILL{% endif %}</button>
   </div>

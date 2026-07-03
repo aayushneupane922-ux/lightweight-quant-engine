@@ -96,6 +96,25 @@ class TapeRow(BaseModel):
     detail: str
 
 
+class DecisionCard(BaseModel):
+    """One autonomy step rendered as a card (docs/05 §5.4, docs/10 M9):
+    hypothesis → search → validate → promote/kill. Reconstructed read-only
+    from the audit's autonomy events."""
+
+    model_config = _FROZEN
+    hypo_id: str
+    model_id: str
+    rationale: str
+    degradation_triggered: bool
+    n_trials: int
+    verdict: Literal["PASS", "FAIL", "PENDING"]
+    dsr: float | None
+    pbo: float | None
+    promoted: bool
+    llm_used: bool
+    narration: str
+
+
 class StateReader:
     def __init__(
         self,
@@ -140,6 +159,87 @@ class StateReader:
         incrementally), most-recent last, capped at `limit`."""
         rows = [_tape_row(env) for env in self._records if env.seq > after_seq]
         return rows[-limit:]
+
+    # -- decision cards ---------------------------------------------------
+
+    def decision_cards(self, *, limit: int = 30) -> list[DecisionCard]:
+        """The autonomy loop's steps as cards, newest first (docs/10 M9). A
+        `HypothesisEvent` opens a card; the events emitted after it (trials,
+        validation, promotion, narration, LLM calls) up to the next
+        hypothesis belong to it. A preceding `DeRiskEvent` marks the card as
+        degradation-triggered."""
+        cards: list[_CardBuilder] = []
+        pending_derisk = False
+        for env in self._records:
+            t = env.type
+            if t == "DeRiskEvent":
+                pending_derisk = True
+                continue
+            if t == "HypothesisEvent":
+                p = env.payload
+                models = p.get("target_models") or []
+                cards.append(
+                    _CardBuilder(
+                        hypo_id=str(p["hypo_id"]),
+                        model_id=str(models[0]) if models else "?",
+                        rationale=str(p.get("rationale", "")),
+                        degradation_triggered=pending_derisk,
+                    )
+                )
+                pending_derisk = False
+            elif cards:
+                cards[-1].absorb(t, env.payload)
+        built = [c.build() for c in cards]
+        return list(reversed(built))[:limit]
+
+
+# --- decision-card assembly -----------------------------------------------
+
+
+class _CardBuilder:
+    def __init__(
+        self, *, hypo_id: str, model_id: str, rationale: str, degradation_triggered: bool
+    ) -> None:
+        self.hypo_id = hypo_id
+        self.model_id = model_id
+        self.rationale = rationale
+        self.degradation_triggered = degradation_triggered
+        self.n_trials = 0
+        self.verdict: Literal["PASS", "FAIL", "PENDING"] = "PENDING"
+        self.dsr: float | None = None
+        self.pbo: float | None = None
+        self.promoted = False
+        self.llm_used = False
+        self.narration = ""
+
+    def absorb(self, event_type: str, payload: dict[str, object]) -> None:
+        if event_type == "TrialEvent":
+            self.n_trials += 1
+        elif event_type == "ValidationEvent":
+            self.verdict = "PASS" if payload.get("result") == "PASS" else "FAIL"
+            self.dsr = float(str(payload.get("dsr", "nan")))
+            self.pbo = float(str(payload.get("pbo", "nan")))
+        elif event_type == "PromotionEvent":
+            self.promoted = True
+        elif event_type == "LlmCallEvent":
+            self.llm_used = True
+        elif event_type == "NarrationEvent":
+            self.narration = str(payload.get("text", ""))
+
+    def build(self) -> DecisionCard:
+        return DecisionCard(
+            hypo_id=self.hypo_id,
+            model_id=self.model_id,
+            rationale=self.rationale,
+            degradation_triggered=self.degradation_triggered,
+            n_trials=self.n_trials,
+            verdict=self.verdict,
+            dsr=self.dsr,
+            pbo=self.pbo,
+            promoted=self.promoted,
+            llm_used=self.llm_used,
+            narration=self.narration,
+        )
 
 
 # --- reconstruction -------------------------------------------------------

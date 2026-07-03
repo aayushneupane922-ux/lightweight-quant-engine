@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Intel{% endblock %}
+{% block main %}
+<div class="head">
+  <h1>Intelligence · Decision Cards</h1>
+  <span class="sub">{{ cards|length }} autonomy steps · hypothesis → search → validate → promote/kill</span>
+</div>
+<div class="honesty">
+  <span class="tag">OBSERVE-ONLY</span>
+  The orchestrator/LLM proposes and explains; <b>Optuna searches</b> and the <b>gate judges</b>.
+  Nothing here is promoted without a gate PASS, and the LLM can neither size an order nor clear the kill.
+</div>
+
+<div class="cards">
+  {% for c in cards %}
+  <div class="card">
+    <div class="ch">
+      <span class="cm">{{ c.model_id }}</span>
+      {% if c.llm_used %}<span class="llm">LLM</span>{% else %}<span class="rule">RULE-BASED</span>{% endif %}
+    </div>
+    <div class="cr">
+      {% if c.degradation_triggered %}<b style="color:var(--short)">degradation →</b> {% endif %}{{ c.rationale }}
+    </div>
+    <div class="stages">
+      <span class="stage done">HYPOTHESIS</span>
+      <span class="arrow">→</span>
+      <span class="stage{% if c.n_trials %} done{% endif %}">SEARCH · {{ c.n_trials }} trials</span>
+      <span class="arrow">→</span>
+      <span class="stage{% if c.verdict != 'PENDING' %} done{% endif %}">
+        VALIDATE ·
+        {% if c.verdict == 'PASS' %}<span class="pass">PASS</span>{% elif c.verdict == 'FAIL' %}<span class="fail">FAIL</span>{% else %}…{% endif %}
+        {% if c.dsr is not none %} dsr={{ "%.2f"|format(c.dsr) }}{% endif %}
+      </span>
+      <span class="arrow">→</span>
+      <span class="stage{% if c.promoted %} done{% endif %}">
+        {% if c.promoted %}<span class="pass">PROMOTED</span>{% else %}not promoted{% endif %}
+      </span>
+    </div>
+    {% if c.narration %}<div class="cn">{{ c.narration }}</div>{% endif %}
+  </div>
+  {% endfor %}
+  {% if not cards %}
+  <div class="narr">No autonomy steps recorded yet — run <code>lqe autopilot</code> and point the desk at its audit log.</div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block inspector %}
+<h2>◇ Autopilot</h2>
+<div class="narr">
+  <b>Autopilot ON</b> = the loop runs aggressively in the sandbox and promotes only gate-passed configs to
+  the tracked book. Toggle it <b>OFF</b> in the status rail to <b>take the wheel</b>. The human
+  <b>KILL</b> halts autonomy instantly and is un-overridable by the LLM.
+</div>
+{% endblock %}

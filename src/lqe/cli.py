@@ -282,6 +282,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="DuckDB catalog filename under --root for persistent trial provenance "
         "(honest cross-campaign trial counting). Omit to count in-memory only.",
     )
+    autopilot_parser.add_argument(
+        "--llm",
+        action="store_true",
+        help="Use a local Ollama narrator (falls back to rule-based if the server is absent).",
+    )
+    autopilot_parser.add_argument("--llm-model", default="llama3.1")
     autopilot_parser.set_defaults(func=_cmd_autopilot)
 
     desk_parser = subparsers.add_parser(
@@ -322,6 +328,7 @@ def _cmd_check_config(args: argparse.Namespace) -> int:
 def _cmd_autopilot(args: argparse.Namespace) -> int:
     # Imported lazily: the autonomy loop needs the optional `search` extra
     # (Optuna). Base/non-autopilot commands must import without it.
+    from lqe.autonomy.narrator import make_narrator
     from lqe.autonomy.optimizer import OptunaOptimizer
     from lqe.autonomy.orchestrator import Orchestrator
     from lqe.autonomy.promotion_gate import GateThresholds
@@ -354,6 +361,7 @@ def _cmd_autopilot(args: argparse.Namespace) -> int:
             seed=args.seed,
             n_trials=args.trials,
             registry=registry,
+            narrator=make_narrator(use_llm=args.llm, model=args.llm_model, seed=args.seed),
         )
         states = orchestrator.run(steps=args.steps, start=symbol_bars[-1].ts_open)
 

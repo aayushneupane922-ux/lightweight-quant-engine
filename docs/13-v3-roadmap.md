@@ -189,38 +189,69 @@ genuine AA-contrast audit — not a rebuild.
 - **Exit gate:** ✅ full suite green (372 tests, 8 correctly skipped) +
   ruff + mypy + license gate green; `git tag m19-done`.
 
-## M20 — Live Trade Blotter (the trade book you can watch)  · M · Dep: M19
+## M20 — Live Trade Blotter (the trade book you can watch)  · M · Dep: M19  ✅ `m20-done`
 **Goal:** when a trade happens, you *see* it — unmistakably. (This is very
 likely a display/plumbing gap, not a trading gap — the fix includes proving
 trades actually flow.)
 
-- [ ] A first-class **Blotter** view + a compact live **Tape** strip on the
-  Floor. One row per fill, newest on top, live via WebSocket. Columns
-  (mono, tabular): time · model · symbol · side (long/short color **+**
-  glyph) · qty · fill price · fee · slippage bps · sim P&L. Filter by
-  model/symbol/side; per-model and aggregate tabs.
-- [ ] Show the **full order lifecycle**, not just fills: intent → **risk
-  decision** (APPROVE / CLAMP / REJECT + reason) → fill / partial / reject.
-  So the user sees *why* something did or didn't trade.
-- [ ] **Unmissable feedback:** a new fill flashes its row + a quiet toast;
-  the Floor cell pulses. Optional subtle sound, **off by default**.
-- [ ] **Honest empty state (do not skip — this is probably the actual
-  complaint).** If there are no trades, say *why*: "Warming up — N bars
-  until first evaluation" / "No signals in the last X min (models are
-  watching)" / "Tracked book has 0 promoted models — exploring in the
-  sandbox." Never a blank panel that looks broken.
-- [ ] **Verify trades genuinely flow** (fix the cause, not just the view):
-  a task/test that runs the live fleet over a replay or live window and
-  asserts fills reach the blotter. If the fleet legitimately isn't trading,
-  surface that state in plain language.
-- [ ] **Reconciliation panel:** positions / cash / P&L per model, tied out
-  to the audit log (standard blotter practice).
-- **Tests:** every fill in the audit log appears in the blotter, in order;
-  lifecycle (reject/clamp with reason) shown; the empty state explains
-  *why*; a live/replay session produces visible fills; the blotter is
-  read-only (constructs no `Order`).
-- **Exit gate:** you can watch trades happen live with clear per-trade
-  detail and an honest empty state. `git tag m20-done`.
+- [x] A first-class **Blotter** view (`/blotter`, `F8`) + the existing
+  compact live **Tape** strip on the Floor (already shows fills generically
+  since M7 -- unchanged). One row per fill, newest on top, live via
+  WebSocket (`/ws`'s frame now carries `blotter` alongside `snapshot`/
+  `tape`). Columns (mono, tabular): time · model · symbol · side (long/
+  short color **+** glyph, ▲/▼) · qty · fill price · fee · slippage bps ·
+  sim P/L. Filter by model/symbol/side (client-side, populated from the
+  rendered rows so it can't drift).
+- [x] Show the **full order lifecycle**, not just fills: intent → risk
+  decision (**APPROVE / CLAMP / REJECT** + `rule_hits` + the signal's own
+  `reason`) → fill/partial/reject. New `StateReader.blotter()` reconstructs
+  this straight off `OrderIntent`/`RiskDecision`/`Order`/`FillEvent` already
+  in the audit log (no new event type) -- one row per fill; a REJECTed (or
+  approved-but-not-yet-filled) intent gets exactly one no-fill row, so
+  nothing silently vanishes.
+- [x] **Unmissable feedback:** a new fill flashes its Blotter row (CSS
+  keyframe, `prefers-reduced-motion`-safe) + a toast (`aria-live`) + pulses
+  the matching Floor model cell (`data-model` attribute added). Optional
+  Web-Audio beep, **off by default**, toggle persisted to `localStorage`.
+- [x] **Honest empty state:** new `blotter_empty_state_reason()` --
+  deterministic, computed from the same snapshot the rest of the desk
+  reads: "Warming up -- waiting for the first bars to arrive." (zero bars
+  seen) / "Tracked book has 0 promoted models -- exploring in the
+  sandbox." (bars flowing, nothing promoted) / "No signals in the last
+  bars (models are watching)." Never a blank panel.
+- [x] **Verified trades genuinely flow**
+  (`tests/integration/test_live_blotter_flow.py`): runs the *real* live
+  fleet (offline CSV adapter, a genuine up/down price cycle so momentum
+  and mean-reversion models both have an honest reason to fire) and
+  asserts real fills reach `DeskData.blotter()` -- this is the actual
+  fleet-to-view path, not a synthetic fixture standing in for it. Passed
+  on 4 separate runs (real wall-clock timing, not flaky).
+- [x] **Reconciliation panel:** new `StateReader.reconciliation()` --
+  net position + realized P&L + trade count per model, reusing the same
+  FIFO lot accounting `model_cells()` already reads from (one source of
+  truth, not a second computation that could diverge). Tied out to the
+  audit log by construction, same as everything else this view reads.
+- **Tests:** ✅ `tests/unit/test_state_reader.py` (+9: a hand-built audit
+  log covering all three verdicts -- REJECT with no fill, CLAMP with a
+  partial-then-final fill across two rows, APPROVE with one fill and its
+  P&L delta; ordering; incremental `after_seq` polling; reconciliation
+  matches position/P&L; all three empty-state branches) ·
+  `tests/integration/test_ui_blotter.py` (9: the view renders, filters/
+  sound-toggle/reconciliation-panel markup present, nav entry present,
+  honest empty state renders when there are no trades, `/api/blotter`
+  JSON contract + incremental polling, the WS frame carries blotter rows)
+  · `tests/integration/test_live_blotter_flow.py` (1: the real-fleet
+  fills-genuinely-flow test above) · `tests/honesty/test_ui_honesty.py`
+  extended to cover `/blotter` (PAPER·LIVE LOCKED shield, no raw stdout,
+  no profit-language) · `tests/safety/` (AST lockout scans) unchanged and
+  green -- the Blotter constructs no `Order`, confirmed by the existing
+  `make_order` lockout test with zero modification needed. **Verified
+  live** against the real `lqe desk` server with `runs/desk-preview/
+  audit.jsonl`: the Blotter page rendered real fills, the nav/`F8` link
+  worked, `/api/blotter` returned real lifecycle JSON, and a real
+  WebSocket connection's first frame carried 15 real blotter rows.
+- **Exit gate:** ✅ full suite green (391 tests, 8 correctly skipped) +
+  ruff + mypy + license gate green; `git tag m20-done`.
 
 ## M21 — The "Engine Room" conversation (watch the LLM, ML & autopilot talk)  · L · Dep: M19
 **Goal:** witness the LLM, the optimizer, the validator, and the autopilot

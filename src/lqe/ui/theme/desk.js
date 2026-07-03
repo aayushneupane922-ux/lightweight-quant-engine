@@ -52,12 +52,186 @@
     if (dot) dot.classList.toggle("off", !!snap.kill_active);
   }
 
+  // -- blotter (docs/13 M20): live fill feedback + the Blotter view's own
+  // table repaint. `handleBlotterFrame` runs on every page (Floor's model
+  // cells can pulse from any view showing the rail); `paintBlotter` only
+  // touches anything when `#blotter-body` exists.
+
+  var lastBlotterSeq = null;
+
+  function fmtSide(side) {
+    return side === "BUY"
+      ? '<span class="pos">&#9650; LONG</span>'
+      : '<span class="neg">&#9660; SHORT</span>';
+  }
+
+  function verdictClass(v) {
+    return v === "APPROVE" ? "pass" : v === "CLAMP" ? "warn" : "fail";
+  }
+
+  function fmtNum(x, digits) {
+    return x === null || x === undefined ? "—" : Number(x).toFixed(digits);
+  }
+
+  function pulseModelCell(modelId) {
+    var cell = document.querySelector('.cell[data-model="' + modelId + '"]');
+    if (!cell) return;
+    cell.classList.remove("pulse");
+    void cell.offsetWidth; // restart the animation if it's already mid-run
+    cell.classList.add("pulse");
+  }
+
+  function flashBlotterRow(seq) {
+    var row = document.querySelector('.blotter-row[data-seq="' + seq + '"]');
+    if (!row) return;
+    row.classList.remove("flash");
+    void row.offsetWidth;
+    row.classList.add("flash");
+  }
+
+  function soundEnabled() {
+    return !!(window.localStorage && window.localStorage.getItem("lqe-blotter-sound") === "1");
+  }
+
+  function playFillSound() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      var ctx = new Ctx();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.frequency.value = 880;
+      gain.gain.value = 0.05;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+      osc.onended = function () { ctx.close(); };
+    } catch (e) { /* Web Audio unavailable -- sound is optional, never required */ }
+  }
+
+  function collectBlotterFilterOptions() {
+    var modelSel = document.getElementById("blotter-filter-model");
+    if (!modelSel) return;
+    var symbolSel = document.getElementById("blotter-filter-symbol");
+    var models = new Set();
+    var symbols = new Set();
+    document.querySelectorAll(".blotter-row").forEach(function (row) {
+      models.add(row.dataset.model);
+      symbols.add(row.dataset.symbol);
+    });
+    fillSelectOptions(modelSel, models);
+    fillSelectOptions(symbolSel, symbols);
+  }
+
+  function fillSelectOptions(select, values) {
+    var current = select.value;
+    var opts = ['<option value="">All</option>'];
+    Array.from(values).sort().forEach(function (v) {
+      opts.push('<option value="' + v + '">' + v + "</option>");
+    });
+    select.innerHTML = opts.join("");
+    select.value = current && values.has(current) ? current : "";
+  }
+
+  function applyBlotterFilters() {
+    var modelSel = document.getElementById("blotter-filter-model");
+    if (!modelSel) return;
+    var model = modelSel.value;
+    var symbol = document.getElementById("blotter-filter-symbol").value;
+    var side = document.getElementById("blotter-filter-side").value;
+    document.querySelectorAll(".blotter-row").forEach(function (row) {
+      var visible =
+        (!model || row.dataset.model === model) &&
+        (!symbol || row.dataset.symbol === symbol) &&
+        (!side || row.dataset.side === side);
+      row.style.display = visible ? "" : "none";
+    });
+  }
+
+  function paintBlotter(rows) {
+    var body = document.getElementById("blotter-body");
+    if (!body) return;
+    var table = document.getElementById("blotter-table");
+    var empty = document.getElementById("blotter-empty");
+    if (rows.length && table && empty) {
+      table.hidden = false;
+      empty.hidden = true;
+    }
+    body.innerHTML = "";
+    rows.slice().reverse().forEach(function (r) {
+      var tr = document.createElement("tr");
+      tr.className =
+        "blotter-row" + (r.verdict !== "APPROVE" || r.fill_qty == null ? " blotter-lifecycle" : "");
+      tr.dataset.model = r.model;
+      tr.dataset.symbol = r.symbol;
+      tr.dataset.side = r.side;
+      tr.dataset.seq = r.seq;
+      var t = (r.sim_ts || "").slice(11, 19);
+      var qty = r.fill_qty != null ? r.fill_qty : r.intent_qty;
+      var pnlClass = r.sim_pnl == null ? "" : Number(r.sim_pnl) >= 0 ? "pos" : "neg";
+      var pnlText = r.sim_pnl == null ? "—" : (Number(r.sim_pnl) >= 0 ? "+" : "") + Number(r.sim_pnl).toFixed(2);
+      tr.innerHTML =
+        "<td>" + t + "</td>" +
+        "<td>" + r.model + "</td>" +
+        "<td>" + r.symbol + "</td>" +
+        "<td>" + fmtSide(r.side) + "</td>" +
+        '<td class="mono">' + fmtNum(qty, 4) + "</td>" +
+        '<td class="mono">' + fmtNum(r.fill_px, 4) + "</td>" +
+        '<td class="mono">' + fmtNum(r.fee, 4) + "</td>" +
+        '<td class="mono">' + fmtNum(r.slippage_bps, 1) + "</td>" +
+        '<td class="mono ' + pnlClass + '">' + pnlText + "</td>" +
+        '<td class="' + verdictClass(r.verdict) + '" title="' + (r.rule_hits || []).join(", ") + '">' +
+        r.verdict + (r.partial ? " (partial)" : "") + "</td>";
+      body.appendChild(tr);
+    });
+    collectBlotterFilterOptions();
+    applyBlotterFilters();
+  }
+
+  function handleBlotterFrame(rows) {
+    if (!Array.isArray(rows) || !rows.length) return;
+    paintBlotter(rows);
+    var maxSeq = rows[rows.length - 1].seq;
+    if (lastBlotterSeq === null) {
+      lastBlotterSeq = maxSeq; // baseline on first frame -- don't alert for rows already on the page
+      return;
+    }
+    var newFills = rows.filter(function (r) { return r.seq > lastBlotterSeq && r.fill_qty != null; });
+    newFills.forEach(function (r) {
+      toast(r.model + " " + r.side + " " + Number(r.fill_qty).toFixed(4) + " @ " + r.fill_px + " (sim)", "ok");
+      pulseModelCell(r.model);
+      flashBlotterRow(r.seq);
+    });
+    if (newFills.length && soundEnabled()) playFillSound();
+    lastBlotterSeq = maxSeq;
+  }
+
+  function initBlotterFilters() {
+    var modelSel = document.getElementById("blotter-filter-model");
+    if (!modelSel) return;
+    collectBlotterFilterOptions();
+    ["blotter-filter-model", "blotter-filter-symbol", "blotter-filter-side"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener("change", applyBlotterFilters);
+    });
+    var soundToggle = document.getElementById("blotter-sound-toggle");
+    if (soundToggle) {
+      soundToggle.checked = soundEnabled();
+      soundToggle.addEventListener("change", function () {
+        if (window.localStorage) {
+          window.localStorage.setItem("lqe-blotter-sound", soundToggle.checked ? "1" : "0");
+        }
+      });
+    }
+  }
+
   function apply(payload) {
     if (payload.snapshot) {
       paintSession(payload.snapshot);
       paintKill(payload.snapshot);
     }
     if (payload.tape) paintTape(payload.tape);
+    if (payload.blotter) handleBlotterFrame(payload.blotter);
   }
 
   function connect() {
@@ -350,10 +524,14 @@
     }
     // keyboard-first mode switching (F1..F6 -> nav hrefs)
     document.addEventListener("keydown", function (e) {
-      var map = { F1: "/", F2: "/catalog", F3: "/research", F4: "/intel", F5: "/risk", F6: "/daily", F7: "/engine" };
+      var map = {
+        F1: "/", F2: "/catalog", F3: "/research", F4: "/intel",
+        F5: "/risk", F6: "/daily", F7: "/engine", F8: "/blotter",
+      };
       if (map[e.key]) { e.preventDefault(); location.href = map[e.key]; }
     });
     initPalette();
+    initBlotterFilters();
     connect();
   });
 })();

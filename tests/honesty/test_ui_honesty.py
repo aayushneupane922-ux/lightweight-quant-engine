@@ -22,7 +22,7 @@ from lqe.ui.app import create_app
 from lqe.ui.data import CatalogRow, DeskData, ExperimentRow
 
 SYMBOL = "BTC-USDT"
-PAGES = ["/", "/catalog", "/research", "/risk", "/daily"]
+PAGES = ["/", "/catalog", "/research", "/risk", "/daily", "/blotter"]
 
 
 def _client() -> TestClient:

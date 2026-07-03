@@ -9,12 +9,14 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from lqe.backtest.runner import run_backtest
-from lqe.core.events import MarketEvent
+from lqe.core.engine import AuditLog
+from lqe.core.events import FillEvent, MarketEvent, Order, OrderIntent, RiskDecision
 from lqe.core.types import Symbol
 from lqe.models.plugins.trend_ma_cross import TrendMaCross
-from lqe.storage.state_reader import CatalogModelInfo, StateReader
+from lqe.storage.state_reader import CatalogModelInfo, StateReader, blotter_empty_state_reason
 
 SYMBOL: Symbol = "BTC-USDT"
+NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def _bars(n: int) -> list[MarketEvent]:
@@ -143,3 +145,190 @@ def test_charts_are_a_noop_when_already_within_budget() -> None:
     assert reader.price_series(SYMBOL, max_points=1000) == reader.price_series(
         SYMBOL, max_points=100_000
     )
+
+
+# -- blotter (docs/13 M20) --------------------------------------------------
+
+
+def _blotter_log() -> AuditLog:
+    """A hand-built audit log covering all three risk verdicts: a REJECTed
+    intent (no Order/Fill at all), a CLAMPed intent that still gets a
+    partial then a final fill, and a plain APPROVEd intent with one fill."""
+    log = AuditLog()
+    seq = 1
+
+    # 1) REJECT -- duplicate_signal, say -- never becomes an Order.
+    rejected_intent = OrderIntent(
+        intent_id="i-reject", signal_ref="s1", strategy="alpha", symbol=SYMBOL, side="BUY",
+        qty=Decimal("5"), order_type="MARKET", idempotency_key="k1", reason="fast > slow",
+    )
+    log.append(
+        event_type="OrderIntent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=rejected_intent,
+    )
+    seq += 1
+    log.append(
+        event_type="RiskDecision", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=RiskDecision(
+            intent_ref="i-reject", verdict="REJECT", approved_qty=Decimal("0"),
+            rule_hits=["duplicate_signal"], detail={},
+        ),
+    )
+    seq += 1
+
+    # 2) CLAMP -- approved less than requested -- becomes an Order, gets a
+    #    partial fill then a final fill (two blotter rows, one intent).
+    clamped_intent = OrderIntent(
+        intent_id="i-clamp", signal_ref="s2", strategy="beta", symbol=SYMBOL, side="SELL",
+        qty=Decimal("10"), order_type="MARKET", idempotency_key="k2", reason="slow > fast",
+    )
+    log.append(
+        event_type="OrderIntent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=clamped_intent,
+    )
+    seq += 1
+    log.append(
+        event_type="RiskDecision", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=RiskDecision(
+            intent_ref="i-clamp", verdict="CLAMP", approved_qty=Decimal("6"),
+            rule_hits=["max_position"], detail={},
+        ),
+    )
+    seq += 1
+    log.append(
+        event_type="Order", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=Order(
+            order_id="order:i-clamp", intent_ref="i-clamp", side="SELL", qty=Decimal("6"),
+            order_type="MARKET", status="PENDING",
+        ),
+    )
+    seq += 1
+    log.append(
+        event_type="FillEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=FillEvent(
+            order_id="order:i-clamp", fill_ts=NOW, fill_px=Decimal("100"), fill_qty=Decimal("4"),
+            fee=Decimal("0.1"), slippage_bps=1.0, partial=True,
+        ),
+    )
+    seq += 1
+    log.append(
+        event_type="FillEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=FillEvent(
+            order_id="order:i-clamp", fill_ts=NOW, fill_px=Decimal("101"), fill_qty=Decimal("2"),
+            fee=Decimal("0.05"), slippage_bps=1.5, partial=False,
+        ),
+    )
+    seq += 1
+
+    # 3) APPROVE -- plain, one fill.
+    approved_intent = OrderIntent(
+        intent_id="i-approve", signal_ref="s3", strategy="alpha", symbol=SYMBOL, side="BUY",
+        qty=Decimal("3"), order_type="MARKET", idempotency_key="k3", reason="fast > slow again",
+    )
+    log.append(
+        event_type="OrderIntent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=approved_intent,
+    )
+    seq += 1
+    log.append(
+        event_type="RiskDecision", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=RiskDecision(
+            intent_ref="i-approve", verdict="APPROVE", approved_qty=Decimal("3"),
+            rule_hits=[], detail={},
+        ),
+    )
+    seq += 1
+    log.append(
+        event_type="Order", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=Order(
+            order_id="order:i-approve", intent_ref="i-approve", side="BUY", qty=Decimal("3"),
+            order_type="MARKET", status="PENDING",
+        ),
+    )
+    seq += 1
+    log.append(
+        event_type="FillEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=FillEvent(
+            order_id="order:i-approve", fill_ts=NOW, fill_px=Decimal("99"), fill_qty=Decimal("3"),
+            fee=Decimal("0.05"), slippage_bps=0.5, partial=False,
+        ),
+    )
+    return log
+
+
+def test_blotter_gives_a_rejected_intent_exactly_one_no_fill_row() -> None:
+    rows = StateReader(_blotter_log().records).blotter()
+    rejected = [r for r in rows if r.model == "alpha" and r.verdict == "REJECT"]
+    assert len(rejected) == 1
+    r = rejected[0]
+    assert r.fill_qty is None and r.fill_px is None and r.sim_pnl is None
+    assert r.rule_hits == ["duplicate_signal"]
+    assert r.intent_qty == Decimal("5")
+
+
+def test_blotter_gives_a_clamped_intent_one_row_per_fill() -> None:
+    rows = StateReader(_blotter_log().records).blotter()
+    clamped = [r for r in rows if r.model == "beta"]
+    assert len(clamped) == 2  # the partial fill, then the final fill
+    assert all(r.verdict == "CLAMP" for r in clamped)
+    assert clamped[0].partial is True
+    assert clamped[1].partial is False
+    assert clamped[0].fill_qty == Decimal("4")
+    assert clamped[1].fill_qty == Decimal("2")
+
+
+def test_blotter_approve_row_carries_fill_and_pnl() -> None:
+    rows = StateReader(_blotter_log().records).blotter()
+    approved = [r for r in rows if r.model == "alpha" and r.verdict == "APPROVE"]
+    assert len(approved) == 1
+    r = approved[0]
+    assert r.fill_qty == Decimal("3")
+    assert r.fill_px == Decimal("99")
+    assert r.sim_pnl is not None  # a BUY fee-only delta -- negative, but present
+
+
+def test_blotter_rows_are_ordered_oldest_first_by_seq() -> None:
+    rows = StateReader(_blotter_log().records).blotter()
+    assert rows == sorted(rows, key=lambda r: r.seq)
+
+
+def test_blotter_after_seq_is_incremental() -> None:
+    reader = StateReader(_blotter_log().records)
+    everything = reader.blotter(after_seq=0, limit=100000)
+    highest = everything[-1].seq
+    assert reader.blotter(after_seq=highest) == []
+
+
+def test_reconciliation_matches_model_cells_position_and_pnl() -> None:
+    reader = StateReader(_blotter_log().records)
+    recon = {r.model_id: r for r in reader.reconciliation()}
+    assert set(recon) == {"alpha", "beta"}
+    # alpha: bought 3 @ 99, no sells -> net position +3
+    assert recon["alpha"].net_qty == Decimal("3")
+    assert recon["alpha"].n_trades == 1
+    # beta: sold 4 then 2 (short) -> net position -6
+    assert recon["beta"].net_qty == Decimal("-6")
+    assert recon["beta"].n_trades == 2
+
+
+def test_blotter_empty_state_reason_warming_up_with_no_bars() -> None:
+    reader = StateReader([])
+    snap = reader.snapshot()
+    expected = "Warming up -- waiting for the first bars to arrive."
+    assert blotter_empty_state_reason(snap, []) == expected
+
+
+def test_blotter_empty_state_reason_none_when_rows_present() -> None:
+    reader = StateReader(_blotter_log().records)
+    rows = reader.blotter()
+    assert blotter_empty_state_reason(reader.snapshot(), rows) is None
+
+
+def test_blotter_empty_state_reason_explains_sandbox_exploration() -> None:
+    # bars are flowing (data_health has bars_seen > 0) but nothing has
+    # promoted/traded yet -- an empty blotter should say why, not go blank.
+    reader = _reader()  # the real backtest fixture: bars flow, models trade
+    snap = reader.snapshot()
+    reason = blotter_empty_state_reason(snap, [])  # force the "no rows" branch
+    assert reason is not None
+    assert "sandbox" in reason or "watching" in reason

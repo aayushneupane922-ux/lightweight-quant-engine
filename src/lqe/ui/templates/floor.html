@@ -63,7 +63,7 @@
 
 <div class="grid">
   {% for m in snapshot.models %}
-  <div class="cell">
+  <div class="cell" data-model="{{ m.model_id }}">
     <div class="top">
       <div>
         <div class="name">{{ m.model_id }}</div>

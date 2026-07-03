@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Blotter{% endblock %}
+{% block main %}
+<div class="head">
+  <h1>Blotter · Trade Book</h1>
+  <span class="sub">{{ rows|length }} lifecycle rows · intent → risk decision → fill/reject</span>
+</div>
+<div class="honesty">
+  <span class="tag">SIMULATED</span>
+  Every row is reconciled from the audit log. Rejected and clamped intents are shown too, with the
+  risk rule that fired — not just the fills that made it through.
+</div>
+
+<div class="control-panel" id="blotter-filters">
+  <div class="control-row">
+    <span class="control-label">Model</span>
+    <select id="blotter-filter-model" class="ctl-input"><option value="">All</option></select>
+    <span class="control-label">Symbol</span>
+    <select id="blotter-filter-symbol" class="ctl-input"><option value="">All</option></select>
+    <span class="control-label">Side</span>
+    <select id="blotter-filter-side" class="ctl-input">
+      <option value="">All</option>
+      <option value="BUY">Long (BUY)</option>
+      <option value="SELL">Short (SELL)</option>
+    </select>
+    <span class="spacer"></span>
+    <label class="control-check">
+      <input type="checkbox" id="blotter-sound-toggle">
+      Sound on new fill (off by default)
+    </label>
+  </div>
+</div>
+
+<div class="narr" id="blotter-empty" {% if rows %}hidden{% endif %}>{{ empty_reason }}</div>
+
+<table class="data" id="blotter-table" {% if not rows %}hidden{% endif %}>
+  <thead>
+    <tr>
+      <th>Time</th><th>Model</th><th>Symbol</th><th>Side</th><th>Qty</th>
+      <th>Fill px</th><th>Fee</th><th>Slip bps</th><th>Sim P/L</th><th>Verdict</th>
+    </tr>
+  </thead>
+  <tbody id="blotter-body">
+    {% for r in rows|reverse %}
+    <tr class="blotter-row{% if r.verdict != 'APPROVE' or r.fill_qty is none %} blotter-lifecycle{% endif %}"
+        data-model="{{ r.model }}" data-symbol="{{ r.symbol }}" data-side="{{ r.side }}" data-seq="{{ r.seq }}">
+      <td>{{ r.sim_ts.strftime('%H:%M:%S') }}</td>
+      <td>{{ r.model }}</td>
+      <td>{{ r.symbol }}</td>
+      <td><span class="{% if r.side == 'BUY' %}pos{% else %}neg{% endif %}">{% if r.side == 'BUY' %}&#9650; LONG{% else %}&#9660; SHORT{% endif %}</span></td>
+      <td class="mono">{% if r.fill_qty is not none %}{{ "%.4f"|format(r.fill_qty) }}{% else %}{{ "%.4f"|format(r.intent_qty) }}{% endif %}</td>
+      <td class="mono">{% if r.fill_px is not none %}{{ "%.4f"|format(r.fill_px) }}{% else %}—{% endif %}</td>
+      <td class="mono">{% if r.fee is not none %}{{ "%.4f"|format(r.fee) }}{% else %}—{% endif %}</td>
+      <td class="mono">{% if r.slippage_bps is not none %}{{ "%.1f"|format(r.slippage_bps) }}{% else %}—{% endif %}</td>
+      <td class="mono {% if r.sim_pnl is not none and r.sim_pnl >= 0 %}pos{% elif r.sim_pnl is not none %}neg{% endif %}">
+        {% if r.sim_pnl is not none %}{{ "%+.2f"|format(r.sim_pnl) }}{% else %}—{% endif %}
+      </td>
+      <td class="{% if r.verdict == 'APPROVE' %}pass{% elif r.verdict == 'CLAMP' %}warn{% else %}fail{% endif %}"
+          title="{{ r.rule_hits|join(', ') }}{% if r.reason %} · {{ r.reason }}{% endif %}">
+        {{ r.verdict }}{% if r.partial %} (partial){% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2 style="margin-top:20px; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--intel)">Reconciliation · position &amp; P/L per model</h2>
+<table class="data" style="margin-top:8px">
+  <thead><tr><th>Model</th><th>Net qty</th><th>Realized P/L (sim)</th><th>Trades</th></tr></thead>
+  <tbody>
+    {% for r in reconciliation %}
+    <tr>
+      <td>{{ r.model_id }}</td>
+      <td class="mono">{{ "%.4f"|format(r.net_qty) }}</td>
+      <td class="mono {% if r.realized_pnl >= 0 %}pass{% else %}fail{% endif %}">{{ "%+.2f"|format(r.realized_pnl) }}</td>
+      <td class="mono">{{ r.n_trades }}</td>
+    </tr>
+    {% endfor %}
+    {% if not reconciliation %}
+    <tr><td colspan="4" class="lowN" style="text-align:center">No models have traded yet.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endblock %}
+{% block inspector %}
+<h2>◇ Blotter</h2>
+<div class="narr">
+  One row per fill; a rejected or clamped intent still gets a row, with the risk rule that fired —
+  nothing silently vanishes. Read-only — this view sends no commands and constructs no order.
+</div>
+{% endblock %}

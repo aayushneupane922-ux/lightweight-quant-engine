@@ -17,13 +17,16 @@ from pydantic import BaseModel, ConfigDict
 
 from lqe.live.control import Command, ControlPlane
 from lqe.storage.state_reader import (
+    BlotterRow,
     DecisionCard,
     EquityPoint,
     GraphPayload,
     PriceBar,
+    ReconciliationRow,
     StateReader,
     TapeRow,
     UIState,
+    blotter_empty_state_reason,
 )
 
 if TYPE_CHECKING:
@@ -140,6 +143,15 @@ class DeskData:
 
     def equity_curve(self, *, max_points: int = 1000) -> list[EquityPoint]:
         return self._state_reader.equity_curve(max_points=max_points)
+
+    def blotter(self, *, after_seq: int = 0, limit: int = 500) -> list[BlotterRow]:
+        return self._state_reader.blotter(after_seq=after_seq, limit=limit)
+
+    def reconciliation(self) -> list[ReconciliationRow]:
+        return self._state_reader.reconciliation()
+
+    def blotter_empty_state(self) -> str | None:
+        return blotter_empty_state_reason(self._state_reader.snapshot(), self.blotter())
 
     def catalog(self) -> list[CatalogRow]:
         return list(self._catalog_rows)

@@ -20,7 +20,7 @@ from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -104,6 +104,45 @@ class UIState(BaseModel):
     session: SessionStats | None
     models: list[ModelCell]
     data_health: list[DataHealth]
+
+
+class BlotterRow(BaseModel):
+    """One row of the live trade blotter (docs/13 M20): a signal's full
+    order lifecycle -- intent -> risk decision -> fill/reject -- read
+    straight off `OrderIntent`/`RiskDecision`/`FillEvent` already in the
+    audit log. One row per fill; a `REJECT`ed (or approved-but-not-yet-
+    filled) intent gets exactly one row with no fill fields, so nothing
+    silently vanishes."""
+
+    model_config = _FROZEN
+    seq: int
+    sim_ts: datetime
+    model: str
+    symbol: Symbol
+    side: Literal["BUY", "SELL"]
+    intent_qty: Decimal
+    reason: str
+    verdict: Literal["APPROVE", "CLAMP", "REJECT"]
+    rule_hits: list[str]
+    fill_qty: Decimal | None
+    fill_px: Decimal | None
+    fee: Decimal | None
+    slippage_bps: float | None
+    partial: bool
+    sim_pnl: Decimal | None  # this fill's own realized-P&L delta; None if no fill
+
+
+class ReconciliationRow(BaseModel):
+    """Per-model position/P&L, tied out to the audit log (docs/13 M20
+    "standard blotter practice"). `net_qty`/`realized_pnl` come from the
+    same FIFO lot accounting `model_cells()` uses -- not a second,
+    divergent computation."""
+
+    model_config = _FROZEN
+    model_id: str
+    net_qty: Decimal
+    realized_pnl: Decimal
+    n_trades: int
 
 
 class TapeRow(BaseModel):
@@ -215,6 +254,20 @@ class StateReader:
             models=recon.model_cells(),
             data_health=recon.data_health(),
         )
+
+    # -- blotter (docs/13 M20) ---------------------------------------------
+
+    def blotter(self, *, after_seq: int = 0, limit: int = 500) -> list[BlotterRow]:
+        """The full order lifecycle (docs/13 M20), rows with `seq >
+        after_seq`, oldest first, capped at `limit` -- same incremental-
+        poll shape as `tape()`."""
+        recon = _Reconstruction(self._records, self._catalog)
+        rows = [r for r in recon.blotter() if r.seq > after_seq]
+        return rows[-limit:]
+
+    def reconciliation(self) -> list[ReconciliationRow]:
+        recon = _Reconstruction(self._records, self._catalog)
+        return recon.reconciliation()
 
     # -- tape -------------------------------------------------------------
 
@@ -411,6 +464,20 @@ def _downsample[T](rows: list[T], max_points: int) -> list[T]:
     return [row for i, row in enumerate(rows) if i in indices]
 
 
+def blotter_empty_state_reason(snapshot: UIState, rows: list[BlotterRow]) -> str | None:
+    """Docs/13 M20 "honest empty state" -- if the blotter has nothing to
+    show, say *why*, deterministically from the same snapshot the rest of
+    the desk already reads. `None` means non-empty; render the rows
+    instead."""
+    if rows:
+        return None
+    if sum(h.bars_seen for h in snapshot.data_health) == 0:
+        return "Warming up -- waiting for the first bars to arrive."
+    if not any(m.status == "validated" for m in snapshot.models):
+        return "Tracked book has 0 promoted models -- exploring in the sandbox."
+    return "No signals in the last bars (models are watching)."
+
+
 def _conviction(is_tracked: bool, n_trades: int) -> float:
     """A display heuristic for node prominence (docs/05 §5.5) — attention/
     evidence, explicitly NOT P&L. Validated (tracked) models read strongest;
@@ -527,7 +594,14 @@ class _Reconstruction:
 
         self._order_to_strategy: dict[str, str] = {}
         self._order_to_side: dict[str, str] = {}
+        self._order_to_intent: dict[str, str] = {}
         self._intent_to_strategy: dict[str, str] = {}
+        self._intent_meta: dict[str, dict[str, Any]] = {}
+        self._decision_meta: dict[str, dict[str, Any]] = {}
+        self._decision_seq: dict[str, int] = {}
+        self._decision_ts: dict[str, datetime] = {}
+        self._fill_pnl: dict[int, Decimal] = {}
+        self._fill_envs: list[EventEnvelope] = []
         self._strategies: dict[str, _StrategyAgg] = defaultdict(_StrategyAgg)
         self._last_risk_state: dict[str, object] | None = None
         self._starting_equity: Decimal | None = None
@@ -559,6 +633,14 @@ class _Reconstruction:
     def _on_OrderIntent(self, env: EventEnvelope) -> None:
         p = env.payload
         self._intent_to_strategy[str(p["intent_id"])] = str(p["strategy"])
+        self._intent_meta[str(p["intent_id"])] = dict(p)
+
+    def _on_RiskDecision(self, env: EventEnvelope) -> None:
+        p = env.payload
+        intent_ref = str(p["intent_ref"])
+        self._decision_meta[intent_ref] = dict(p)
+        self._decision_seq[intent_ref] = env.seq
+        self._decision_ts[intent_ref] = env.sim_ts
 
     def _on_Order(self, env: EventEnvelope) -> None:
         p = env.payload
@@ -568,6 +650,7 @@ class _Reconstruction:
         if strategy is not None:
             self._order_to_strategy[order_id] = strategy
         self._order_to_side[order_id] = str(p["side"])
+        self._order_to_intent[order_id] = intent_ref
 
     def _on_FillEvent(self, env: EventEnvelope) -> None:
         p = env.payload
@@ -580,11 +663,14 @@ class _Reconstruction:
         px = Decimal(str(p["fill_px"]))
         fee = Decimal(str(p["fee"]))
         side = self._order_to_side.get(order_id, "BUY")
+        realized_before = agg.realized
         if side == "BUY":
             agg.on_buy(qty, px, fee)
         else:
             agg.on_sell(qty, px, fee)
         agg.fired_on_last_seq = env.seq == self._max_seq
+        self._fill_pnl[env.seq] = agg.realized - realized_before
+        self._fill_envs.append(env)
 
     def _on_RiskStateEvent(self, env: EventEnvelope) -> None:
         p = env.payload
@@ -640,6 +726,69 @@ class _Reconstruction:
         return [
             DataHealth(symbol=sym, last_bar=last, bars_seen=seen)
             for sym, (last, seen) in sorted(self._symbols.items())
+        ]
+
+    def blotter(self) -> list[BlotterRow]:
+        """The full order lifecycle, one row per fill; a `REJECT`ed (or
+        approved-but-not-yet-filled) intent gets exactly one no-fill row.
+        Oldest first (same convention as `tape()`); the UI reverses for
+        display."""
+        rows: list[BlotterRow] = []
+        filled_intents: set[str] = set()
+
+        for env in self._fill_envs:
+            p = env.payload
+            order_id = str(p["order_id"])
+            intent_ref = self._order_to_intent.get(order_id)
+            intent = self._intent_meta.get(intent_ref) if intent_ref else None
+            decision = self._decision_meta.get(intent_ref) if intent_ref else None
+            if intent is None or decision is None or intent_ref is None:
+                continue  # not honestly reconstructable from this audit log
+            filled_intents.add(intent_ref)
+            rows.append(
+                BlotterRow(
+                    seq=env.seq, sim_ts=env.sim_ts,
+                    model=str(intent["strategy"]), symbol=str(intent["symbol"]),
+                    side=intent["side"], intent_qty=Decimal(str(intent["qty"])),
+                    reason=str(intent.get("reason", "")),
+                    verdict=decision["verdict"], rule_hits=list(decision.get("rule_hits", [])),
+                    fill_qty=Decimal(str(p["fill_qty"])), fill_px=Decimal(str(p["fill_px"])),
+                    fee=Decimal(str(p["fee"])), slippage_bps=float(p["slippage_bps"]),
+                    partial=bool(p["partial"]), sim_pnl=self._fill_pnl.get(env.seq),
+                )
+            )
+
+        for intent_ref, decision in self._decision_meta.items():
+            if intent_ref in filled_intents:
+                continue
+            intent = self._intent_meta.get(intent_ref)
+            if intent is None:
+                continue
+            rows.append(
+                BlotterRow(
+                    seq=self._decision_seq[intent_ref], sim_ts=self._decision_ts[intent_ref],
+                    model=str(intent["strategy"]), symbol=str(intent["symbol"]),
+                    side=intent["side"], intent_qty=Decimal(str(intent["qty"])),
+                    reason=str(intent.get("reason", "")),
+                    verdict=decision["verdict"], rule_hits=list(decision.get("rule_hits", [])),
+                    fill_qty=None, fill_px=None, fee=None, slippage_bps=None,
+                    partial=False, sim_pnl=None,
+                )
+            )
+
+        rows.sort(key=lambda r: r.seq)
+        return rows
+
+    def reconciliation(self) -> list[ReconciliationRow]:
+        """Per-model position + realized P&L, tied out to the same FIFO
+        lot accounting `model_cells()` reads from -- one source of truth,
+        not a second computation that could silently diverge."""
+        return [
+            ReconciliationRow(
+                model_id=model_id, net_qty=agg.net_qty, realized_pnl=agg.realized,
+                n_trades=agg.n_trades,
+            )
+            for model_id, agg in sorted(self._strategies.items())
         ]
 
 

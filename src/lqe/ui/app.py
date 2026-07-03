@@ -56,6 +56,7 @@ _NAV = [
     ("engine", "Engine", "F7", "/engine"),
     ("risk", "Risk", "F5", "/risk"),
     ("daily", "Daily", "F6", "/daily"),
+    ("blotter", "Blotter", "F8", "/blotter"),
 ]
 
 
@@ -146,6 +147,18 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
             request, "daily.html", _ctx(request, "daily", rows=data.daily())
         )
 
+    @app.get("/blotter", response_class=HTMLResponse)
+    def blotter(request: Request) -> Any:
+        rows = data.blotter()
+        return templates.TemplateResponse(
+            request, "blotter.html",
+            _ctx(
+                request, "blotter", rows=rows,
+                empty_reason=data.blotter_empty_state(),
+                reconciliation=data.reconciliation(),
+            ),
+        )
+
     # --- read-only JSON (UI polling / tests) -----------------------------
 
     @app.get("/api/snapshot")
@@ -155,6 +168,11 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
     @app.get("/api/tape")
     def api_tape(after_seq: int = 0) -> JSONResponse:
         rows = [r.model_dump(mode="json") for r in data.tape(after_seq=after_seq)]
+        return JSONResponse(rows)
+
+    @app.get("/api/blotter")
+    def api_blotter(after_seq: int = 0) -> JSONResponse:
+        rows = [r.model_dump(mode="json") for r in data.blotter(after_seq=after_seq)]
         return JSONResponse(rows)
 
     @app.get("/api/graph")
@@ -292,24 +310,25 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
 
     # --- live push -------------------------------------------------------
 
+    def _ws_frame() -> dict[str, Any]:
+        # docs/13 M20: blotter rows ride the same live push as snapshot/tape
+        # so a new fill reaches the client without a separate poll loop.
+        return {
+            "snapshot": data.snapshot().model_dump(mode="json"),
+            "tape": [r.model_dump(mode="json") for r in data.tape(limit=60)],
+            "blotter": [r.model_dump(mode="json") for r in data.blotter(limit=60)],
+        }
+
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
         await websocket.accept()
         try:
-            payload = {
-                "snapshot": data.snapshot().model_dump(mode="json"),
-                "tape": [r.model_dump(mode="json") for r in data.tape(limit=60)],
-            }
-            await websocket.send_text(json.dumps(payload, default=str))
+            await websocket.send_text(json.dumps(_ws_frame(), default=str))
             # Read-only stream: the client may ping for a refresh; we never
             # accept a mutating message here (writes go through /api/control).
             while True:
                 await websocket.receive_text()
-                refreshed = {
-                    "snapshot": data.snapshot().model_dump(mode="json"),
-                    "tape": [r.model_dump(mode="json") for r in data.tape(limit=60)],
-                }
-                await websocket.send_text(json.dumps(refreshed, default=str))
+                await websocket.send_text(json.dumps(_ws_frame(), default=str))
         except WebSocketDisconnect:
             return
 

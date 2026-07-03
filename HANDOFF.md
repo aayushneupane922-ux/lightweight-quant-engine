@@ -2,12 +2,13 @@
 
 **Purpose:** orient a developer (human or a fresh Claude Code session) picking this up cold. Read this, then `CLAUDE.md` (constitution) + `GUARDRAILS.md` + `WORKFLOW.md`, then `docs/10-production-roadmap.md` (the milestone map, kept checked-off as work lands).
 
-## 1. Status (as of M11 complete)
+## 1. Status (v1.0 — all milestones complete)
 
-A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M11 are complete, verified, committed, and tagged; M12 (hardening + release → v1.0) is the only milestone left.**
+A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 are complete, verified, committed, and tagged. The project is at v1.0.**
 
-- **Tags:** `m0-done` … `m11-done`, plus `v0.1`. (v0.2/v0.3/v0.4 were marked "shippable" in the roadmap at m7/m9/m10 but only the milestone tags were cut; `v0.1` was tagged on explicit request.)
-- **Health:** **273 tests pass** · `ruff` clean · `mypy --strict` clean · license gate PASS · git tree clean.
+- **Tags:** `m0-done` … `m11-done`, `m12-done`, plus `v0.1` and `v1.0`.
+- **Health:** **291 tests pass** · `ruff` clean · `mypy --strict` clean · license gate PASS · git tree clean.
+- **Release evidence:** `M12-RELEASE-REVIEW.md` (§19.1 safety + honesty checklist, every item PASS with a file:line / test / command citation). Runtime guide: `USER-GUIDE.md`.
 - **Branch:** `master`. Every milestone = one commit + a `mN-done` tag. Git identity is a local placeholder (set per-repo, flagged to the owner).
 
 ### Verify everything in one shot (Windows, from repo root)
@@ -33,6 +34,7 @@ CI (`.github/workflows/ci.yml`) installs `.[ui,search,dev]` — **not** `.[model
 - **M9** — autopilot + LLM: `autonomy/tools` (5 structured tool calls + fail-closed parser), `autonomy/narrator` (rule-based default + optional Ollama via stdlib, graceful fallback), `LlmCallEvent` provenance, UI autopilot toggle + Intel decision cards + take-the-wheel.
 - **M10** — 3D neural-web: `StateReader.graph(at_seq)` (`GraphPayload`, deterministic timeline replay), `viz3d/neural_web.js` (dependency-free canvas force-graph), `/engine` view + `/api/graph`.
 - **M11** — scale: `models/catalog_scale.py` (**51 models** via presets × param grids + heavy adapters), 3 more adapters (HMM/change-point/supervised), `reconcile_basket` (multi-instrument), `portfolio/universe.py` (survivorship-safe), `lqe catalog`.
+- **M12** — hardening + release: `ops/health.py` (`lqe doctor` — read-only invariant check), `ops/backup.py` (`lqe backup`), clean typed CLI errors (missing bundle → clean line, not a traceback), `run.py` (one-command launcher + optional pywebview window, loopback-only), `M12-RELEASE-REVIEW.md` (§19.1 + honesty with evidence), `USER-GUIDE.md`. Tagged `v1.0`.
 
 ## 3. Key deviations from the named spec (all deliberate + flagged)
 
@@ -59,18 +61,21 @@ The spec names some tools that were replaced for a good reason — same "own the
 
 Run `docs/archive/19` §19.1 safety review after any milestone or any change touching `risk/`, `execution/`, `autonomy/`, or the lockout.
 
-## 5. What's left — M12 (final milestone → v1.0)
+## 5. What's left — nothing (v1.0 shipped)
 
-Per `docs/10` M12:
-- [ ] Consolidate `tests/safety` + `tests/honesty`; re-run §19.1 + honesty checklist with evidence.
-- [ ] `license_gate.py` in CI (done — verify) + `THIRD_PARTY_NOTICES.md` (generator exists — verify current).
-- [ ] Packaging: local run script; optional desktop window (pywebview) / installer (PyTauri) — **verify localhost-only**; verify local-LLM weight licenses if distributing.
-- [ ] Backups for `data/`, `runs/`, `catalog.duckdb`; a one-command `lqe doctor` health check.
-- [ ] Update `HANDOFF`/`README`; short user guide.
-- **Exit gate:** all gates green with evidence; packaged app runs + binds 127.0.0.1 only + places no real order; `git tag v1.0`.
+All twelve milestones are done and tagged. If work continues past v1.0, the
+natural next slices (all explicitly **out of scope** for the MVP, per `GUARDRAILS.md`):
+persist the autopilot's tracked book across process restarts; a real Ollama
+integration test behind a marker; wiring the `models` extra into a separate CI
+lane so the heavy adapters get exercised (kept out of the default lane on
+purpose — the quarantine tests need them absent). **None of these may weaken a
+lockout, the gate, or the honesty rails.**
 
-## 6. Known small item (not a blocker)
-`lqe autopilot`/`lqe backtest` dump a raw `FileNotFoundError` traceback on a missing bundle instead of a clean error line + non-zero exit. Cosmetic; documented in the memory note `cli-missing-bundle-traceback`. Fix candidate for M12 polish.
+## 6. Formerly-known small item (now fixed in M12)
+`lqe backtest`/`lqe autopilot` used to dump a raw `FileNotFoundError` on a
+missing bundle. Fixed: `load_bundle` raises a typed `DataQualityError` and the
+CLI catches `LqeError` at the boundary → clean line + exit 1. Tests in
+`tests/integration/test_cli_ops.py`.
 
 ## 7. Working style that's been followed (keep it up)
 Tests-first; one milestone per session then STOP for review; real verification (run it, don't claim it); flag deviations loudly and get a decision when a NEVER/scope line is near; commit + `mN-done` tag at each exit gate. The owner periodically asks for a mid-build audit ("check everything is intact") — that's the §19.1 safety review + layering + full-gate + a completeness cross-check against the milestone exit criteria.

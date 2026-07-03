@@ -4,6 +4,18 @@ A **local, paper-only, autonomous quant research simulator**: a large catalog of
 
 **The honest core:** exploration is free in the sandbox, but the equity curve you *watch* (the tracked book) only accepts changes that pass out-of-sample validation, and it de-risks — never chases — on degradation. The **system** learns on history, runs the validated result live, watches live for decay, and re-learns on history when it decays; the LLM steers and explains, the math decides.
 
+## Status: v1.0 (all milestones complete)
+
+The engine is built — M0–M12 done, verified, and tagged. **To run it, read [USER-GUIDE.md](USER-GUIDE.md)**; the release safety/honesty review with evidence is in [M12-RELEASE-REVIEW.md](M12-RELEASE-REVIEW.md); the developer orientation is in [HANDOFF.md](HANDOFF.md).
+
+```
+pip install -e ".[ui,search,dev]"
+lqe doctor          # read-only health check (lockout, config, catalog, license gate)
+python run.py       # serve the Obsidian Desk on 127.0.0.1 (paper-only)
+```
+
+The sections below are the original **planning package** the engine was built from — kept for provenance.
+
 ## Operating files (the agent's rails — start here)
 | File | Purpose |
 |---|---|

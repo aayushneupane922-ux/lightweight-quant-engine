@@ -130,13 +130,13 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **Tests:** ✅ basket accounting reconciles (cash + per-symbol) and halts on mismatch · native models run deterministically · universe is survivorship-safe + deterministic · heavy-lib models quarantine transparently · every admitted model `unproven` until a gate PASS.
 - **Exit gate:** ✅ 50+ models available, honestly gated; license gate green; `git tag m11-done`.
 
-## M12 — Hardening, review & release  · L · Dep: all
-- [ ] Consolidate `tests/safety` + `tests/honesty`; re-run docs/archive/19 §19.1 + honesty checklist with evidence.
-- [ ] `scripts/license_gate.py` in CI (fail on GPL/Commons-Clause in runtime); generate `THIRD_PARTY_NOTICES.md`.
-- [ ] Packaging: local run script; optional desktop window (pywebview) / installer (PyTauri) — verify localhost-only; verify local-LLM weight licenses if distributing.
-- [ ] Backups for `data/`, `runs/`, `catalog.duckdb`; a one-command `lqe doctor` health check.
-- [ ] Update `HANDOFF`/`README`; write a short user guide.
-- **Tests:** full suite green; determinism/parity/replay hold; packaged app binds 127.0.0.1 only and places no real order.
+## M12 — Hardening, review & release  · L · Dep: all — ✅ DONE
+- [x] Consolidate `tests/safety` + `tests/honesty`; re-run docs/archive/19 §19.1 + honesty checklist with evidence. → `M12-RELEASE-REVIEW.md`.
+- [x] `scripts/license_gate.py` in CI (fail on GPL/Commons-Clause in runtime); generate `THIRD_PARTY_NOTICES.md`. → CI `ci.yml:28`; notices current (50 pkgs).
+- [x] Packaging: local run script (`run.py`); optional desktop window (pywebview, lazy) — localhost-only verified (`tests/safety/test_run_script_localhost.py`). PyTauri installer / local-LLM weights deliberately NOT bundled (no unvetted dep / weight-license enters the repo; documented in `USER-GUIDE.md`/`M12-RELEASE-REVIEW.md`).
+- [x] Backups for `data/`, `runs/`, `catalog.duckdb` (`lqe backup`); one-command `lqe doctor` health check.
+- [x] Update `HANDOFF`/`README`; write a short user guide (`USER-GUIDE.md`).
+- **Tests:** full suite green (291 passed); determinism/parity/replay hold; packaged app binds 127.0.0.1 only and places no real order.
 - **Exit gate:** all gates green with evidence; packaged app runs; `git tag v1.0`. **→ v1.0 production-ready local app.**
 
 ---

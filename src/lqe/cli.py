@@ -258,6 +258,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.set_defaults(func=_cmd_validate)
 
+    autopilot_parser = subparsers.add_parser(
+        "autopilot", help="Run the rule-based autonomy loop over a replay bundle (paper-only)."
+    )
+    autopilot_parser.add_argument("--root", default="runs")
+    autopilot_parser.add_argument("--bundle", required=True)
+    autopilot_parser.add_argument("--symbol", default="BTC-USDT")
+    autopilot_parser.add_argument("--steps", type=int, default=3)
+    autopilot_parser.add_argument("--trials", type=int, default=12)
+    autopilot_parser.add_argument("--seed", type=int, default=0)
+    autopilot_parser.add_argument("--starting-cash", type=float, default=10_000.0)
+    autopilot_parser.add_argument("--min-periods", type=int, default=10_000)
+    autopilot_parser.add_argument("--out", default=None, help="Write the audit JSONL here.")
+    autopilot_parser.set_defaults(func=_cmd_autopilot)
+
     desk_parser = subparsers.add_parser(
         "desk", help="Serve the Obsidian Desk web UI on 127.0.0.1 (localhost only)."
     )
@@ -272,6 +286,49 @@ def build_parser() -> argparse.ArgumentParser:
     desk_parser.set_defaults(func=_cmd_desk)
 
     return parser
+
+
+def _cmd_autopilot(args: argparse.Namespace) -> int:
+    # Imported lazily: the autonomy loop needs the optional `search` extra
+    # (Optuna). Base/non-autopilot commands must import without it.
+    from lqe.autonomy.optimizer import OptunaOptimizer
+    from lqe.autonomy.orchestrator import Orchestrator
+    from lqe.autonomy.promotion_gate import GateThresholds
+    from lqe.autonomy.searchable import default_searchable_models
+
+    root = Path(args.root)
+    _, bars = load_bundle(root, args.bundle)
+    symbol_bars = [bar for bar in bars if bar.symbol == args.symbol]
+    if not symbol_bars:
+        print(f"no bars for symbol {args.symbol!r} in bundle {args.bundle!r}")
+        return 1
+
+    orchestrator = Orchestrator(
+        validator=Validator(),
+        gate=PromotionGate(thresholds=GateThresholds(min_periods=args.min_periods)),
+        optimizer=OptunaOptimizer(),
+        searchable_models=default_searchable_models(),
+        bars=symbol_bars,
+        symbol=args.symbol,
+        starting_cash=Decimal(str(args.starting_cash)),
+        seed=args.seed,
+        n_trials=args.trials,
+    )
+    states = orchestrator.run(steps=args.steps, start=symbol_bars[-1].ts_open)
+
+    promoted = sum(1 for s in states if s.promoted)
+    tracked_count = len(orchestrator.tracked_book.entries()) if orchestrator.tracked_book else 0
+    print(f"autopilot: {args.steps} steps over {len(symbol_bars)} bars ({args.symbol})")
+    for s in states:
+        tag = " -> promoted" if s.promoted else ""
+        print(f"  step {s.step_index} {s.focus_model}: {s.verdict}{tag}")
+    print(f"promoted {promoted}/{args.steps}; tracked book has {tracked_count} models")
+    print(f"audit hash-chain verifies: {orchestrator.engine.audit.verify()}")
+    if args.out:
+        out = Path(args.out)
+        orchestrator.engine.audit.write_jsonl(out)
+        print(f"wrote audit log -> {out}")
+    return 0
 
 
 def _cmd_desk(args: argparse.Namespace) -> int:

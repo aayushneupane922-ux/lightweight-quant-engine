@@ -99,13 +99,13 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **Tests:** ✅ UI renders no unstructured stdout · kill flips the persistent switch + blocks risk-increasing orders · UI constructs no `Order`, imports no risk/execution/autonomy internals (AST) · bound to 127.0.0.1 only.
 - **Exit gate:** ✅ app matches the Obsidian Desk mockup, no CLI feed, honesty overlays present; `git tag m7-done`. **→ v0.2 shippable.**
 
-## M8 — Autonomy loop  · L · Dep: M4 (+M3, M2)  ← never before M4
-- [ ] `autonomy/orchestrator.py` (control flow) + `autonomy/optimizer.py` (**Optuna**, seeded) + wire `Validator`/`PromotionGate`.
-- [ ] `autonomy/drift.py` (River ADWIN/DDM) → degradation flags; de-risk-then-revalidate response ([`02`](02-autonomy-autopilot-and-learning-loop.md) §2.4).
-- [ ] Sandbox vs tracked books on the shared `make_session`; promotion crosses only via the gate; every step audited (`Hypothesis/Trial/Validation/Promotion/DeRisk` events).
-- [ ] Rule-based orchestrator first (no LLM yet).
-- **Tests:** loop runs observe→hypothesize→search→validate→decide, all audited + replayable · gate un-bypassable · degradation de-risks then re-validates (never chases) · Optuna seeded/reproducible · sandbox≠tracked.
-- **Exit gate:** autonomous rule-based loop promotes only validated configs; session replays from log; `git tag m8-done`.
+## M8 — Autonomy loop  · L · Dep: M4 (+M3, M2)  ← never before M4  ✅ m8-done
+- [x] `autonomy/orchestrator.py` (rule-based OBSERVE→HYPOTHESIZE→SEARCH→VALIDATE→DECIDE→NARRATE) + `autonomy/optimizer.py` (**Optuna**, seeded `TPESampler`) + wires `Validator`/`PromotionGate`; every id is model+step-derived so the audit chain replays exactly.
+- [x] `autonomy/drift.py` → degradation flags + de-risk-then-revalidate response ([`02`](02-autonomy-autopilot-and-learning-loop.md) §2.4). Implemented natively (deterministic two-window/flatness/drawdown, ADWIN/DDM as the named reference) rather than pulling River — the loop must be deterministic/replayable and dep-light.
+- [x] Sandbox vs tracked books (`autonomy/books.py`); promotion crosses only via the gate (`TrackedBook.promote` re-checks the PASS verdict), every step audited (`Hypothesis/Trial/Validation/Promotion/DeRisk/Narration` events); honest catalog-wide trial counting.
+- [x] Rule-based orchestrator (no LLM yet); `lqe autopilot` runs it over a replay bundle.
+- **Tests:** ✅ loop runs all phases, all audited + replayable · gate un-bypassable (strict thresholds → nothing promoted) · degradation de-risks then re-validates (failed re-validation leaves the tracked config untouched) · Optuna seeded/reproducible · sandbox≠tracked.
+- **Exit gate:** ✅ autonomous rule-based loop promotes only gate-passed configs; audit persists + reloads + re-verifies; `git tag m8-done`.
 
 ## M9 — Autopilot + local LLM  · M · Dep: M7, M8
 - [ ] Autopilot toggle (aggressive) + decision cards (hypothesis→search→validate→promote/kill) in the UI; take-the-wheel; human kill un-overridable.

@@ -21,6 +21,10 @@ product as of M7). Do not hand-edit; regenerate instead.
 - License: Apache Software License
 - URL: https://github.com/aio-libs/aiosignal
 
+## alembic 1.18.5
+- License: MIT
+- URL: https://alembic.sqlalchemy.org
+
 ## annotated-doc 0.0.4
 - License: MIT
 - URL: https://github.com/fastapi/annotated-doc
@@ -65,6 +69,10 @@ product as of M7). Do not hand-edit; regenerate instead.
 - License: BSD License
 - URL: https://github.com/tartley/colorama
 
+## colorlog 6.10.1
+- License: MIT License
+- URL: https://github.com/borntyping/python-colorlog
+
 ## cryptography 49.0.0
 - License: Apache-2.0 OR BSD-3-Clause
 - URL: https://github.com/pyca/cryptography
@@ -81,6 +89,10 @@ product as of M7). Do not hand-edit; regenerate instead.
 - License: Apache-2.0
 - URL: https://github.com/aio-libs/frozenlist
 
+## greenlet 3.5.3
+- License: MIT AND PSF-2.0
+- URL: https://greenlet.readthedocs.io
+
 ## h11 0.16.0
 - License: MIT License
 - URL: https://github.com/python-hyper/h11
@@ -93,6 +105,10 @@ product as of M7). Do not hand-edit; regenerate instead.
 - License: BSD License
 - URL: https://github.com/pallets/jinja/
 
+## Mako 1.3.12
+- License: MIT License
+- URL: https://www.makotemplates.org/
+
 ## MarkupSafe 3.0.3
 - License: BSD-3-Clause
 - URL: https://github.com/pallets/markupsafe/
@@ -104,6 +120,14 @@ product as of M7). Do not hand-edit; regenerate instead.
 ## numpy 2.2.6
 - License: BSD License
 - URL: https://numpy.org
+
+## optuna 4.9.0
+- License: MIT License
+- URL: https://optuna.org/
+
+## packaging 26.2
+- License: Apache-2.0 OR BSD-2-Clause
+- URL: https://github.com/pypa/packaging
 
 ## propcache 0.5.2
 - License: Apache Software License
@@ -129,6 +153,10 @@ product as of M7). Do not hand-edit; regenerate instead.
 - License: MIT
 - URL: https://github.com/pydantic
 
+## PyYAML 6.0.3
+- License: MIT License
+- URL: https://pyyaml.org/
+
 ## requests 2.34.2
 - License: Apache Software License
 - URL: https://github.com/psf/requests
@@ -137,6 +165,10 @@ product as of M7). Do not hand-edit; regenerate instead.
 - License: MIT
 - URL: https://github.com/pypa/setuptools
 
+## SQLAlchemy 2.0.51
+- License: MIT
+- URL: https://www.sqlalchemy.org
+
 ## starlette 1.3.1
 - License: BSD-3-Clause
 - URL: https://github.com/Kludex/starlette
@@ -144,6 +176,10 @@ product as of M7). Do not hand-edit; regenerate instead.
 ## structlog 26.1.0
 - License: MIT OR Apache-2.0
 - URL: https://github.com/hynek/structlog/blob/main/CHANGELOG.md
+
+## tqdm 4.68.3
+- License: MPL-2.0 AND MIT
+- URL: https://tqdm.github.io
 
 ## typing_extensions 4.16.0
 - License: PSF-2.0

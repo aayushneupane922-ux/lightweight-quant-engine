@@ -41,6 +41,27 @@ class ReplayClock:
         return self._timestamps[self._index]
 
 
+class ManualClock:
+    """A clock whose time is set explicitly by the caller — for
+    higher-level loops (the autonomy orchestrator, M8) that emit audited
+    events at a logical time they control, rather than replaying a bar
+    stream. Deterministic: `now()` only ever returns what was last `set`,
+    so given the same sequence of `set` calls the audit reproduces exactly.
+    """
+
+    def __init__(self, start: datetime) -> None:
+        self._now = start
+
+    def set(self, when: datetime) -> None:
+        self._now = when
+
+    def now(self) -> datetime:
+        return self._now
+
+    def advance(self) -> datetime | None:
+        return self._now
+
+
 class WallclockClock:
     """Real-time clock for the live paper daemon."""
 

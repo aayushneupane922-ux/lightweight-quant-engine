@@ -38,9 +38,10 @@ from typing import Literal
 Tier = Literal["ALLOW", "ALLOW_WITH_NOTE", "DENY", "REVIEW"]
 
 # Extras that are part of the *running* product as of this milestone.
-# data/models/search remain research-only until their own milestone
-# promotes them (see the per-extra comments in pyproject.toml).
-PROMOTED_EXTRAS = ("ui",)
+# `data`/`models` remain research-only until their own milestone promotes
+# them (see the per-extra comments in pyproject.toml). `ui` was promoted at
+# M7; `search` (Optuna) at M8, when the autonomy loop began using it.
+PROMOTED_EXTRAS = ("ui", "search")
 
 # Checked in this exact order — LGPL must be recognized before the bare
 # "GPL" check below would otherwise misclassify it as a hard DENY.

@@ -118,6 +118,12 @@ disallow_untyped_calls = false
 module = ["statsmodels.*", "arch.*", "pypfopt.*", "skfolio.*", "riskfolio.*", "pandas.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# optuna (the M8 search engine) ships no bundled type stubs; scoped to the
+# one adapter module that touches it (autonomy/optimizer.py imports it lazily).
+module = "optuna.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]

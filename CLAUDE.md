@@ -19,7 +19,7 @@ A LOCAL, PAPER-ONLY, autonomous quant research **simulator**. Engine runs locall
 5. LLM ORCHESTRATES + narrates; **Optuna** searches; **Validator** judges. The LLM never optimizes numerically and never overrides the gate. Its actions are logged.
 6. Human KILL/freeze is un-overridable by the LLM. Autopilot is aggressive but paper-only + audited.
 7. GUI renders NO CLI/stdout — structured components only. `localhost` only; no auth; no network exposure.
-8. Runtime deps MIT/BSD/Apache/NCSA only (license CI gate). Models deterministic + manifest-complete or quarantined.
+8. Runtime deps: tiered, transitive, fail-closed license gate (ALLOW: MIT/BSD/Apache/ISC/PSF/NCSA/0BSD/Unlicense/MPL-2.0-unmodified; ALLOW-with-note: LGPL-unmodified; DENY: GPL/AGPL/SSPL/BSL/Commons Clause; unknown → fails closed). Full detail: `docs/11` §11.11. Models deterministic + manifest-complete or quarantined.
 9. No profitability claims. "Equity up" = the tracked, gate-passed, out-of-sample, after-cost book only.
 
 ## The loop invariant (memorize)

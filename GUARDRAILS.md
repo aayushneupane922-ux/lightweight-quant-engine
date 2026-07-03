@@ -11,7 +11,7 @@ The boundary fence for this project. If you (agent or human) are about to build 
 - ❌ Change the live/tracked book to chase recent performance. Degradation → **de-risk + re-validate on history**, never live-curve-chasing.
 - ❌ Render raw CLI/stdout in the GUI. Structured components only.
 - ❌ Expose a port / add `--host` / add auth. `127.0.0.1` only.
-- ❌ Add a runtime dependency that isn't MIT/BSD/Apache/NCSA. No GPL, no Commons Clause. `vectorbt` (if ever) is offline-research only; never import Backtrader.
+- ❌ Add a runtime dependency under a **DENY** license: GPL, AGPL, SSPL, BSL/Business Source, or Commons Clause. **ALLOW** = MIT, BSD, Apache-2.0, ISC, PSF, NCSA, 0BSD, Unlicense, **MPL-2.0** (weak file-level copyleft — fine as an *unmodified* dep, e.g. `certifi`); LGPL is allowed for an unmodified/dynamically-imported dep (flag if you freeze a binary). The license CI gate must scan the **full runtime transitive tree** and **fail closed** on any unknown license. `vectorbt` (if ever) is offline-research only; never import Backtrader (GPL). Full policy: `docs/11` §11.11.
 - ❌ Make any claim of profitability in code, UI, comments, or docs.
 - ❌ Introduce nondeterminism into a sim result (unseeded RNG, wall-clock reads outside `Clock`, network/IO in a decision path, dict-order reliance).
 

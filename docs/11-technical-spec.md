@@ -193,7 +193,7 @@ UI polls `snapshot`/`tape(after_seq)`; the 3D view builds from `graph`. Both are
 - **Locality/security:** bind `127.0.0.1` only; no auth because unreachable; no credentials anywhere; no outbound except ccxt public + optional local Ollama.
 - **Resource bounds:** sandbox trial concurrency capped by `max_concurrent_trials`; bounded job queue; audit log rotation by run.
 - **Accessibility:** UI WCAG AA, keyboard-first, `prefers-reduced-motion`; 3D degrades to 2D.
-- **Licensing:** runtime deps MIT/BSD/Apache/NCSA (CI `pip-licenses` gate); local-LLM weights verified before any distribution.
+- **Licensing (tiered · transitive · fail-closed):** the CI `pip-licenses` gate scans the **full runtime dependency closure** (transitive; runtime extra only — dev/research/test extras excluded), NOT top-level package names. Classify each dist: **ALLOW** = MIT, BSD-2/3, Apache-2.0, ISC, PSF, NCSA, 0BSD, Unlicense, **MPL-2.0** (weak file-level copyleft — safe as an unmodified dependency, e.g. `certifi`); **ALLOW-with-note** = LGPL (dynamically imported / unmodified; flag if frozen into a single binary); **DENY (exit ≠ 0)** = GPL, AGPL, SSPL, BSL/Business Source, Commons Clause; **REVIEW (fail closed, exit ≠ 0)** = unknown / missing / unrecognized license. Normalize messy metadata (read the `License` field + classifiers; regex the deny terms). Regenerate `THIRD_PARTY_NOTICES` from the same scan. Local-LLM weights verified before any distribution. Rationale: `archive/15` §5.5.
 
 ## 11.12 Test contract (what each suite must assert)
 - **safety:** only `PaperBroker` implements `ExecutionAdapter`; `is_paper` asserted at startup; no broker SDK / ccxt order call anywhere; config rejects live; one `Order` constructor after risk; kill un-overridable by LLM; PromotionGate un-bypassable; UI/3D/narrator construct no `Order`.
@@ -201,6 +201,7 @@ UI polls `snapshot`/`tape(after_seq)`; the 3D view builds from `graph`. Both are
 - **determinism/parity:** two runs → identical hashes; replay reproduces session incl. autonomy; backtest↔paper parity.
 - **property (hypothesis):** no intent sequence breaches limits; accounting conservation (cash+positions==equity).
 - **data:** every §8.4 check fires on injected bad data; gaps ⇒ no trade.
+- **license:** gate scans the full runtime transitive closure; **fails closed** on unknown/unrecognized licenses; catches a seeded GPL/AGPL transitive (exit ≠ 0); ALLOWs MPL-2.0 (e.g. `certifi`); DENYs GPL/AGPL/SSPL/BSL/Commons-Clause.
 - **integration:** full v0.x flows end-to-end.
 
 ## 11.13 System acceptance & traceability

@@ -50,9 +50,22 @@ models = [
 search = [
   "optuna",            # MIT — hyperparameter search (M8)
 ]
+# nicegui (MIT) was evaluated for M7 and rejected: importing it alone
+# unconditionally loads python-socketio -> bidict and nicegui's own
+# docutils dependency, and `docutils`'s distribution is itself multi-
+# licensed BSD/GPL/Public-Domain — an ambiguous, DENY-classified transitive
+# dependency under the tiered license policy (docs/11 §11.11), with no
+# clean way to exclude just the tainted file. The Obsidian Desk terminal is
+# built on plain FastAPI + Jinja2 + a native Starlette WebSocket instead —
+# same "FastAPI for localhost" contract (docs/05 §5.7), no adapter needed.
+# `ui` is the first extra "promoted" into the runtime license-gate scan
+# (scripts/license_gate.py): as of M7 it is actually imported by src/lqe/ui,
+# unlike data/models/search which remain research-only until their own
+# milestone promotes them.
 ui = [
-  "fastapi",           # MIT — localhost API (M7)
-  "nicegui",           # MIT — localhost GUI (M7)
+  "fastapi",           # MIT — localhost app + WebSocket (M7)
+  "uvicorn[standard]", # BSD-3 — ASGI server (M7)
+  "jinja2",            # BSD-3 — server-rendered templates (M7)
 ]
 dev = [
   "pytest",
@@ -84,7 +97,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-mypy_path = "src"
+mypy_path = ["src", "scripts"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]

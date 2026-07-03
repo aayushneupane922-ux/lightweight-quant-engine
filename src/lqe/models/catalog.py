@@ -24,6 +24,10 @@ _PERMISSIVE_LIBS = {
     "riskfolio-lib": "BSD-3",
     "statsmodels": "BSD-3",
     "arch": "NCSA",
+    "hmmlearn": "BSD-3",
+    "ruptures": "BSD-2",
+    "scikit-learn": "BSD-3",
+    "lightgbm": "MIT",
 }
 
 

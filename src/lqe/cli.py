@@ -258,6 +258,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.set_defaults(func=_cmd_validate)
 
+    catalog_parser = subparsers.add_parser(
+        "catalog", help="List the scaled model catalog (admitted + transparently quarantined)."
+    )
+    catalog_parser.add_argument("--symbol", default="BTC-USDT")
+    catalog_parser.set_defaults(func=_cmd_catalog)
+
     check_config_parser = subparsers.add_parser(
         "check-config", help="Validate a config file against the paper-only lockout schema."
     )
@@ -304,6 +310,26 @@ def build_parser() -> argparse.ArgumentParser:
     desk_parser.set_defaults(func=_cmd_desk)
 
     return parser
+
+
+def _cmd_catalog(args: argparse.Namespace) -> int:
+    from collections import Counter
+
+    from lqe.models.catalog_scale import build_scaled_catalog
+
+    catalog, results = build_scaled_catalog(args.symbol)
+    admitted = catalog.all()
+    quarantined = catalog.quarantined()
+    by_family = Counter(e.manifest.family for e in admitted)
+    print(f"scaled catalog: {len(results)} models registered for {args.symbol}")
+    print(f"  admitted (constructible now): {len(admitted)}")
+    for family, count in sorted(by_family.items()):
+        print(f"    {family}: {count}")
+    print(f"  quarantined (transparent, e.g. optional 'models' extra absent): {len(quarantined)}")
+    for record in quarantined:
+        print(f"    {record.model_id}: {record.reasons[0]}")
+    print("  every admitted model is 'unproven' until a gate PASS promotes it.")
+    return 0
 
 
 def _cmd_check_config(args: argparse.Namespace) -> int:

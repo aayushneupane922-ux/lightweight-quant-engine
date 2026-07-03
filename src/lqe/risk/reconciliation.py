@@ -23,6 +23,10 @@ from lqe.core.types import Symbol
 from lqe.portfolio.accounting import Accounting
 
 FillRecord = tuple[Literal["BUY", "SELL"], FillEvent]
+# A basket fill also carries the symbol it belongs to — one shared cash pool
+# funds every instrument, so a multi-instrument replay must apply all of them
+# to a single `Accounting` (docs/10 M11).
+BasketFillRecord = tuple[Symbol, Literal["BUY", "SELL"], FillEvent]
 
 
 def replay_fills(
@@ -30,6 +34,18 @@ def replay_fills(
 ) -> Accounting:
     accounting = Accounting(starting_cash=starting_cash)
     for side, fill in fills:
+        accounting.apply_fill(symbol=symbol, side=side, fill=fill)
+    return accounting
+
+
+def replay_basket(
+    *, starting_cash: Decimal, fills: Sequence[BasketFillRecord]
+) -> Accounting:
+    """Replay a multi-instrument fill stream into one shared-cash ledger.
+    Fills must be in chronological (audit) order so the shared cash tracks
+    exactly as the live book did."""
+    accounting = Accounting(starting_cash=starting_cash)
+    for symbol, side, fill in fills:
         accounting.apply_fill(symbol=symbol, side=side, fill=fill)
     return accounting
 
@@ -46,6 +62,28 @@ def reconcile(
             f"rebuilt(cash={rebuilt.cash}, qty={rebuilt_state.qty}) != "
             f"live(cash={live.cash}, qty={live_state.qty})"
         )
+
+
+def reconcile_basket(
+    *, live: Accounting, starting_cash: Decimal, fills: Sequence[BasketFillRecord]
+) -> None:
+    """Multi-instrument reconciliation (docs/10 M11): independently rebuild
+    the whole basket from its fill history and assert cash *and every
+    per-symbol position* match the running ledger. Halts on any mismatch."""
+    rebuilt = replay_basket(starting_cash=starting_cash, fills=fills)
+    if rebuilt.cash != live.cash:
+        raise ReconciliationError(
+            f"basket cash mismatch: rebuilt {rebuilt.cash} != live {live.cash}"
+        )
+    symbols = {sym for sym, _, _ in fills}
+    for sym in sorted(symbols):
+        live_qty = live.position_state(sym).qty
+        rebuilt_qty = rebuilt.position_state(sym).qty
+        if live_qty != rebuilt_qty:
+            raise ReconciliationError(
+                f"basket position mismatch for {sym!r}: "
+                f"rebuilt {rebuilt_qty} != live {live_qty}"
+            )
 
 
 def rebuild_from_audit(path: Path, *, starting_cash: Decimal, symbol: Symbol) -> Accounting:

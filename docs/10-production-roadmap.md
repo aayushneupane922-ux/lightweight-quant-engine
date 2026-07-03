@@ -123,12 +123,12 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **Tests:** ✅ graph builds from audit state (honest node fields, tracked/sandbox regions, only honestly-derivable edges) · replay-at-seq deterministic + monotonic · view/viz3d construct no `Order` and send no control · honesty overlays present · empty audit → valid empty graph.
 - **Exit gate:** ✅ interactive scene animates real state + replays deterministically; `git tag m10-done`. **→ v0.4 shippable.**
 
-## M11 — Scale the catalog  · L · Dep: M6, M8
-- [ ] Add advanced statistical models: cointegration/pairs (statsmodels), GARCH filters (arch), HMM/regime (hmmlearn/ruptures), portfolio (HRP/risk-parity/BL via skfolio/riskfolio), supervised/meta-labeling (sklearn/LightGBM, gated).
-- [ ] Multi-instrument/basket accounting + survivorship-safe ranked universe for factor models.
-- [ ] Scale toward 50+ via adapters; ensure trial-counting spans the whole catalog.
-- **Tests:** multi-asset accounting reconciles · pairs/factor deterministic · multiple-testing count recorded · unproven models can't be ranked/validated until gated.
-- **Exit gate:** 50+ models available, honestly gated; license gate green; `git tag m11-done`.
+## M11 — Scale the catalog  · L · Dep: M6, M8  ✅ m11-done
+- [x] Advanced statistical models via adapters: pairs (statsmodels) + GARCH (arch) from M6, plus HMM regime (hmmlearn), change-point (ruptures), portfolio HRP/MVO (skfolio/PyPortfolioOpt), risk-parity (riskfolio), supervised/meta-labeling (scikit-learn/LightGBM, **gated**). All lazy-imported from the `models` extra; quarantine transparently when absent.
+- [x] Multi-instrument basket accounting (`risk/reconciliation.reconcile_basket` — one shared cash pool, per-symbol reconciliation) + survivorship-safe ranked universe (`portfolio/universe.py`, as-of-date membership, deterministic).
+- [x] Scaled to **51 models via adapter presets × param grids** (`models/catalog_scale.py`, `lqe catalog`); trial-counting spans the whole catalog (M8/F2 registry).
+- **Tests:** ✅ basket accounting reconciles (cash + per-symbol) and halts on mismatch · native models run deterministically · universe is survivorship-safe + deterministic · heavy-lib models quarantine transparently · every admitted model `unproven` until a gate PASS.
+- **Exit gate:** ✅ 50+ models available, honestly gated; license gate green; `git tag m11-done`.
 
 ## M12 — Hardening, review & release  · L · Dep: all
 - [ ] Consolidate `tests/safety` + `tests/honesty`; re-run docs/archive/19 §19.1 + honesty checklist with evidence.

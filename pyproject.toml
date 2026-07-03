@@ -115,7 +115,10 @@ disallow_untyped_calls = false
 # optional "models"-extra packages that aren't installed in the base venv
 # and/or ship no type stubs. Their own modules stay strict; only the
 # missing-import noise from these specific third-party names is silenced.
-module = ["statsmodels.*", "arch.*", "pypfopt.*", "skfolio.*", "riskfolio.*", "pandas.*"]
+module = [
+  "statsmodels.*", "arch.*", "pypfopt.*", "skfolio.*", "riskfolio.*", "pandas.*",
+  "hmmlearn.*", "ruptures.*", "sklearn.*", "lightgbm.*",
+]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

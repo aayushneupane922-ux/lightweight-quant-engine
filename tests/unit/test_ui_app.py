@@ -6,10 +6,13 @@ WebSocket streams a snapshot+tape frame.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
+from lqe.core.engine import AuditLog
+from lqe.core.events import ControlEvent
 from lqe.live.control import ControlPlane
 from lqe.storage.state_reader import StateReader
 from lqe.ui.app import create_app
@@ -48,3 +51,24 @@ def test_theme_assets_are_served() -> None:
     client = _client()
     assert client.get("/theme/desk.css").status_code == 200
     assert client.get("/theme/desk.js").status_code == 200
+
+
+def test_set_state_reader_swaps_what_the_api_serves_live() -> None:
+    """post-v1.0 live-refresh extension: a background loop can replace the
+    read side after construction and every existing read route picks up the
+    new data immediately -- no route/template change needed."""
+    data = DeskData(state_reader=StateReader([]), control=ControlPlane())
+    client = TestClient(create_app(data))
+    assert client.get("/api/tape?after_seq=0").json() == []
+
+    log = AuditLog()
+    log.append(
+        event_type="ControlEvent", run_id="r", seq=1, book="sandbox",
+        sim_ts=datetime(2026, 1, 1, tzinfo=UTC),
+        payload=ControlEvent(command="START", source="live-loop", operator="t", note="grew"),
+    )
+    data.set_state_reader(StateReader(log.records))
+
+    tape = client.get("/api/tape?after_seq=0").json()
+    assert len(tape) == 1
+    assert tape[0]["type"] == "ControlEvent"

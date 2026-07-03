@@ -91,6 +91,17 @@ class DeskData:
         self._experiment_rows = experiment_rows or []
         self._daily_rows = daily_rows or []
 
+    def set_state_reader(self, state_reader: StateReader) -> None:
+        """Swap the read-side snapshot (post-v1.0 live-refresh extension): a
+        live-polling loop can periodically replace this with a `StateReader`
+        rebuilt from the current, growing audit log, so the desk visibly
+        updates as new events arrive without a restart. A plain attribute
+        swap is atomic under the GIL for this single-writer/many-readers
+        pattern (one background thread writes, request handlers only read)
+        -- no lock needed, and every existing read method already re-derives
+        from `self._state_reader` on each call rather than caching."""
+        self._state_reader = state_reader
+
     def snapshot(self) -> UIState:
         return self._state_reader.snapshot()
 

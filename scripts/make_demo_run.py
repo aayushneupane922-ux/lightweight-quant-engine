@@ -15,6 +15,7 @@ import math
 from datetime import UTC, datetime
 from pathlib import Path
 
+from lqe.core.types import Timeframe
 from lqe.data.csv_replay import CsvReplayAdapter
 from lqe.data.ingest import ingest
 from lqe.storage.catalog import Catalog
@@ -23,7 +24,7 @@ from lqe.storage.replay_bundle import build_bundle
 N_BARS = 600
 SYMBOL = "BTC-USDT"
 EXCHANGE = "demo"
-TIMEFRAME = "1m"
+TIMEFRAME: Timeframe = "1m"
 
 
 def _bars_csv() -> str:

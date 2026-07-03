@@ -32,13 +32,13 @@ class SearchableModel:
     build: StrategyBuilder
 
 
-def _build_ma_cross(symbol: Symbol, params: dict[str, Any]) -> Strategy:
+def build_ma_cross(symbol: Symbol, params: dict[str, Any]) -> Strategy:
     # TrendMaCross enforces fast < slow (raises otherwise); the objective
     # catches that and scores the invalid point badly so Optuna avoids it.
     return TrendMaCross(symbol=symbol, fast=int(params["fast"]), slow=int(params["slow"]))
 
 
-def _build_preset(preset: str, model_id: str) -> StrategyBuilder:
+def build_preset(preset: str, model_id: str) -> StrategyBuilder:
     def build(symbol: Symbol, params: dict[str, Any]) -> Strategy:
         return IndicatorRuleAdapter(
             symbol=symbol,
@@ -62,7 +62,7 @@ def default_searchable_models() -> list[SearchableModel]:
                     "slow": ParamRange(low=21, high=80, is_int=True),
                 },
             ),
-            build=_build_ma_cross,
+            build=build_ma_cross,
         ),
         SearchableModel(
             model_id="momentum_tsmom",
@@ -71,7 +71,7 @@ def default_searchable_models() -> list[SearchableModel]:
                 model_id="momentum_tsmom",
                 ranges={"lookback": ParamRange(low=10, high=120, is_int=True)},
             ),
-            build=_build_preset("tsmom", "momentum_tsmom"),
+            build=build_preset("tsmom", "momentum_tsmom"),
         ),
         SearchableModel(
             model_id="meanrev_rsi",
@@ -80,6 +80,6 @@ def default_searchable_models() -> list[SearchableModel]:
                 model_id="meanrev_rsi",
                 ranges={"window": ParamRange(low=5, high=30, is_int=True)},
             ),
-            build=_build_preset("rsi_fade", "meanrev_rsi"),
+            build=build_preset("rsi_fade", "meanrev_rsi"),
         ),
     ]

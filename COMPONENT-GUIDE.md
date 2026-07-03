@@ -336,3 +336,96 @@ pattern — each is ~40 lines.
 ```
 lqe validate --bundle <bundle-id> --symbol BTC-USDT --strategy trend_ma_cross --tearsheet-out sheet.txt
 ```
+
+---
+
+## 11. Live multi-model paper trading (post-v1.0 extension)
+
+User-requested, added after v1.0: **`scripts/run_live_fleet.py`** runs the
+whole admitted catalog against real-time public market data continuously,
+with the autonomy loop narrated by a genuine local LLM. It is *not* part of
+the v1.0-tagged `lqe` CLI surface — a runnable script layered on the same
+tested primitives, not a new milestone.
+
+```
+python scripts/run_live_fleet.py --llm --llm-model llama3.2:3b
+```
+
+**What it wires together, and why each piece needed a small addition:**
+
+- **`live/live_feed.py` (`LiveFeed`)** — polls `CcxtMarketDataAdapter` (public
+  OHLCV, no key, no order call — the existing safety guarantee is inherited,
+  not re-implemented) on an interval, deduping by `ts_open` so a bar is never
+  processed twice and the still-forming bar is never handed to a strategy as
+  if it were closed. `now_fn` is injectable so this is unit-testable without
+  a real clock or network (`tests/unit/test_live_feed.py`).
+- **`live/multi_model_runner.py` (`LiveMultiModelRunner`)** — every admitted
+  model gets its **own** `PaperBroker`/`Accounting`/simulated stake (a
+  `ModelBook`), but they all share **one** `Engine` (one hash-chained audit
+  log) and **one** `RiskModel`/`KillSwitch`, so a single KILL halts every
+  model's new entries at once. Per-model attribution for the desk reuses the
+  *existing* strategy-tagged `SignalEvent`/`OrderIntent`/`Order`/`FillEvent`
+  chain (`storage.state_reader` needed no changes for this). The one thing
+  that doesn't have a natural per-model shape is `RiskStateEvent` — it was
+  designed for a single book, so the runner computes one honest **fleet-wide
+  aggregate** (summed equity/cash/exposure, peak of the *sum* over time, not
+  the sum of each model's own peak) and emits exactly one per bar
+  (`tests/integration/test_live_multi_model_runner.py` proves this against
+  the true summed equity, not just "looks plausible").
+- **`autonomy/searchable_scaled.py` (`broad_searchable_models`)** — the
+  autopilot's default searchable set is 3 models (docs/10 M8's proving
+  surface); this adds the other 9 native indicator families so a
+  long-running session's autonomy loop actually cycles through the catalog's
+  breadth, not just `trend_ma_cross`/`momentum_tsmom`/`meanrev_rsi`. The 3
+  cvxpy portfolio optimizers and the heavier statistical adapters (HMM/
+  change-point/supervised/GARCH) still **trade live in the fleet** — every
+  admitted model does — they're just not wired into Optuna's numeric search
+  (their param spaces don't map onto a scalar sweep the way an indicator
+  threshold does).
+- **`live/merge.py` (`merged_records`)** — the fleet runner and the
+  `Orchestrator` each keep their *own* engine (`Orchestrator` already owns
+  one internally; changing that would touch a well-tested M8 class for a
+  display concern only). This module chronologically interleaves both
+  engines' records into one renumbered, display-only list for the desk —
+  each source's own hash chain stays independently verifiable via its own
+  `AuditLog.verify()`; nothing is written back.
+- **`ui/data.py` (`DeskData.set_state_reader`)** — the one addition to the
+  shipped v1.0 UI layer: lets a background loop swap in a fresh
+  `StateReader` built from the current, growing merged log. Every existing
+  read method already re-derives from `self._state_reader` per call, so nothing
+  else in `ui/` needed to change for the desk to visibly update live.
+- **`autonomy/narrator.py`** — two real fixes made local-LLM narration
+  actually reliable rather than theoretical, both discovered by testing
+  against a real Ollama server, not by inspection: Ollama defaults to a
+  model's full training context (131k tokens), asking llama.cpp to allocate
+  a KV-cache buffer sized for the whole window regardless of prompt length —
+  this crashed the server outright on an ordinary machine; `num_ctx`
+  (default 4096) bounds it. And prompting alone got a small model to wrap
+  free prose in a bare JSON array, which `parse_tool_calls` correctly
+  rejected (fail-closed working as designed) but meant genuine LLM text
+  never reached the loop; Ollama's structured-output `format` (a JSON schema
+  mirroring `autonomy.tools.Narrate`/`ProposeSpace` exactly) constrains
+  *decoding*, not validation — `parse_tool_calls` still checks independently
+  and still fails closed on drift.
+
+**Verified live, not just read in the source:** a fleet of 48 real admitted
+models traded against real recent Binance BTC-USDT bars (42 of them
+accrued genuine trades, including the HMM regime model); the audit
+hash-chain verified throughout; the Intel view showed a decision card
+tagged **LLM** with real, non-templated narration text from a local
+`llama3.2:3b` model (`"Autonomy step failed due to model degradation and
+lack of improvement."` — not the rule-based template's wording); `KILL`
+still halted the whole fleet's new entries with one shared switch.
+
+**Recipe:**
+```
+python scripts/run_live_fleet.py \
+  --symbol BTC-USDT --timeframe 1m --poll-seconds 60 \
+  --lookback-bars 300 --autonomy-every 5 --n-trials 8 \
+  --llm --llm-model llama3.2:3b --port 8137
+```
+Ctrl+C stops it. `--kill-switch <path>` persists the kill state to disk like
+`lqe desk` does. Everything above is still paper-only end to end:
+`PaperBroker` is still the only `ExecutionAdapter`, `make_order` is still the
+only `Order` constructor, ccxt is read-only public data, and there is still
+no kill/clear/order tool in the LLM's vocabulary.

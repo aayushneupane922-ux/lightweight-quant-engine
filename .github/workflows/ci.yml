@@ -26,3 +26,24 @@ jobs:
         run: pytest
       - name: license gate (full runtime transitive closure)
         run: python scripts/license_gate.py
+
+  # docs/12 M16: a second, independent lane that installs the full `models`
+  # extra (statsmodels/arch/hmmlearn/ruptures/skfolio/PyPortfolioOpt/
+  # riskfolio-lib/scikit-learn/lightgbm) so the heavy-lib adapters and the
+  # 51-model scaled catalog get real automated coverage, not just the
+  # quarantine-when-absent path the `check` job exercises. The Windows long-
+  # path issue that blocked 3 of these locally (docs/12 M13) doesn't apply
+  # here -- ubuntu-latest has no such limit. Deliberately a SEPARATE job, not
+  # a change to `check`: the heavy-lib quarantine tests in `check` need
+  # `.[models]` to stay absent there to prove the fail-closed quarantine path.
+  models-extra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install project (promoted runtime + dev + the full models extra)
+        run: pip install -e ".[ui,search,dev,models]"
+      - name: pytest (full suite, heavy-lib adapters present -- not quarantined)
+        run: pytest

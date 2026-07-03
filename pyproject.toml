@@ -130,3 +130,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+markers = [
+  "llm_integration: exercises a real local Ollama server (docs/12 M16); auto-skips via skipif when 127.0.0.1:11434 isn't reachable, so no special flag is needed to run these on a machine that has Ollama installed.",
+]

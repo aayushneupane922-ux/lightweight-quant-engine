@@ -67,7 +67,7 @@ class RiskDecision(EventPayload):
     verdict: Literal["APPROVE", "CLAMP", "REJECT"]
     approved_qty: Qty
     rule_hits: list[str] = []
-    detail: str = ""
+    detail: dict[str, Any] = {}
 
 
 class Order(EventPayload):

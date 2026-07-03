@@ -26,43 +26,43 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 
 ---
 
-## M0 — Environment & scaffold  · S · Dep: none
-- [ ] Install Python 3.12+, git; create repo `lightweight-quant-engine`, `git init`.
-- [ ] Create venv; `pyproject.toml` with the fixed stack ([`07`](07-cost-stack-and-local-llm.md) §7.2); pin versions.
-- [ ] Scaffold `src/lqe/` package tree + `tests/{unit,property,parity,safety,honesty,integration}` ([`08`](08-build-plan-and-claude-code-prompts.md) §8.1).
-- [ ] Add `CLAUDE.md` (repo root) + `docs/` (this fresh set) + `docs/archive/`.
-- [ ] Configure `ruff`, `mypy --strict`, `pytest`, `pre-commit`; add `.gitignore` (ignore `data/`, `runs/`, `*.duckdb/parquet/jsonl`).
-- [ ] Add `.github/workflows/ci.yml`: ruff + mypy + pytest + `scripts/license_gate.py`.
-- [ ] `constants.py`: `LIVE_TRADING_ENABLED=False`.
+## M0 — Environment & scaffold  · S · Dep: none  ✅ `m0-done`
+- [x] Install Python 3.12+, git; create repo `lightweight-quant-engine`, `git init`.
+- [x] Create venv; `pyproject.toml` with the fixed stack ([`07`](07-cost-stack-and-local-llm.md) §7.2); pin versions.
+- [x] Scaffold `src/lqe/` package tree + `tests/{unit,property,parity,safety,honesty,integration}` ([`08`](08-build-plan-and-claude-code-prompts.md) §8.1).
+- [x] Add `CLAUDE.md` (repo root) + `docs/` (this fresh set) + `docs/archive/`.
+- [x] Configure `ruff`, `mypy --strict`, `pytest`, `pre-commit`; add `.gitignore` (ignore `data/`, `runs/`, `*.duckdb/parquet/jsonl`).
+- [x] Add `.github/workflows/ci.yml`: ruff + mypy + pytest + `scripts/license_gate.py`.
+- [x] `constants.py`: `LIVE_TRADING_ENABLED=False`.
 - **Tests:** CI runs green on an empty skeleton; license gate passes.
 - **Exit gate:** `pytest` + `ruff` + `mypy` + license gate all green on the empty scaffold; `git tag m0-done`.
 
-## M1 — Deterministic core + paper-only lockout + audit  · M · Dep: M0
-- [ ] `core/events.py`: immutable pydantic events + autonomy events ([`06`](06-engine-data-risk-and-audit.md) §6.2), hash-chain envelope.
-- [ ] `core/clock.py`: `Clock` protocol + `ReplayClock` + `WallclockClock` (time always injected).
-- [ ] `core/bus.py` + `core/engine.py`: single-threaded, seq-ordered deterministic loop.
-- [ ] `core/determinism.py`: canonical JSON + sha256 hash-chain helpers.
-- [ ] `core/make_order.py`: the single `Order` constructor (calls risk gate later; stub gate returns APPROVE for now).
-- [ ] `core/config.py`: pydantic config; `mode` Enum = {backtest, paper} only; `execution.adapter` Enum = {paper} only; reject anything else at load.
-- [ ] `execution/_locked_out.py`: `NotImplementedError` stubs for any real broker adapter.
+## M1 — Deterministic core + paper-only lockout + audit  · M · Dep: M0  ✅ `m1-done`
+- [x] `core/events.py`: immutable pydantic events + autonomy events ([`06`](06-engine-data-risk-and-audit.md) §6.2), hash-chain envelope.
+- [x] `core/clock.py`: `Clock` protocol + `ReplayClock` + `WallclockClock` (time always injected).
+- [x] `core/bus.py` + `core/engine.py`: single-threaded, seq-ordered deterministic loop.
+- [x] `core/determinism.py`: canonical JSON + sha256 hash-chain helpers.
+- [x] `core/make_order.py`: the single `Order` constructor (calls risk gate later; stub gate returns APPROVE for now).
+- [x] `core/config.py`: pydantic config; `mode` Enum = {backtest, paper} only; `execution.adapter` Enum = {paper} only; reject anything else at load.
+- [x] `execution/_locked_out.py`: `NotImplementedError` stubs for any real broker adapter.
 - **Tests:** replay-equality (two runs → identical audit hashes) · config rejects `mode: live` · `make_order` is the only `Order` constructor (AST/grep test) · hash-chain verifies · startup asserts `is_paper`.
 - **Exit gate:** all safety + determinism tests green; run docs/archive/19 §19.1; `git tag m1-done`.
 
-## M2 — Data ingest, validation, storage  · M · Dep: M1
-- [ ] `data/base.py` (`MarketDataAdapter`) + `data/ccxt_adapter.py` (public endpoints only — no order methods anywhere).
-- [ ] `data/csv_replay.py`; `data/symbols.py` (canonical registry, survivorship-safe).
-- [ ] `storage/parquet.py` + `storage/catalog.py` (DuckDB: data_versions, symbols).
-- [ ] `data/validate.py`: all §8.4 checks (gaps, OHLC sanity, dupes, outliers, checksum) — fail loud, quarantine.
-- [ ] `data/ingest.py` + `cli lqe ingest`; `storage/replay_bundle.py` (frozen, checksummed).
+## M2 — Data ingest, validation, storage  · M · Dep: M1  ✅ `m2-done`
+- [x] `data/base.py` (`MarketDataAdapter`) + `data/ccxt_adapter.py` (public endpoints only — no order methods anywhere).
+- [x] `data/csv_replay.py`; `data/symbols.py` (canonical registry, survivorship-safe).
+- [x] `storage/parquet.py` + `storage/catalog.py` (DuckDB: data_versions, symbols).
+- [x] `data/validate.py`: all §8.4 checks (gaps, OHLC sanity, dupes, outliers, checksum) — fail loud, quarantine.
+- [x] `data/ingest.py` + `cli lqe ingest`; `storage/replay_bundle.py` (frozen, checksummed).
 - **Tests:** each validation check fires on injected bad data · idempotent ingest · no ccxt order method importable (safety) · replay bundle reproducible.
 - **Exit gate:** ingest BTC-USDT/ETH-USDT to curated Parquet; validation + safety tests green; `git tag m2-done`.
 
-## M3 — Model runtime + paper broker + backtest  · M · Dep: M1, M2
-- [ ] `execution/paper_broker.py` (`is_paper=True`) + order state machine.
-- [ ] `execution/{fills,slippage,commission}.py` (pessimistic, next-bar-open default).
-- [ ] `portfolio/accounting.py` (Decimal, per-bar reconciliation) + `portfolio/sizing.py`.
-- [ ] `models/base.py` + one deterministic strategy (`trend_ma_cross`).
-- [ ] `backtest/make_session.py` (the shared loop) + `backtest/runner.py` + `cli lqe backtest`.
+## M3 — Model runtime + paper broker + backtest  · M · Dep: M1, M2  ✅ `m3-done`
+- [x] `execution/paper_broker.py` (`is_paper=True`) + order state machine.
+- [x] `execution/{fills,slippage,commission}.py` (pessimistic, next-bar-open default).
+- [x] `portfolio/accounting.py` (Decimal, per-bar reconciliation) + `portfolio/sizing.py`.
+- [x] `models/base.py` + one deterministic strategy (`trend_ma_cross`).
+- [x] `backtest/make_session.py` (the shared loop) + `backtest/runner.py` + `cli lqe backtest`.
 - **Tests:** end-to-end backtest deterministic (identical audit hashes) · accounting reconciles (cash+positions==equity) · fills never use future data (bar-completeness) · parity (replay==backtest decisions).
 - **Exit gate:** `lqe backtest` runs on a real crypto bundle deterministically; `git tag m3-done`. → **ship v0.1 after M4.**
 

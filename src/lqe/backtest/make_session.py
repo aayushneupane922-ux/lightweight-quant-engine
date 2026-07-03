@@ -17,6 +17,7 @@ from decimal import Decimal
 from typing import Literal
 
 from lqe.core.clock import Clock
+from lqe.core.config import assert_paper_only
 from lqe.core.context import Context
 from lqe.core.engine import Engine
 from lqe.core.events import MarketEvent, OrderIntent, PositionEvent, RiskDecision, SignalEvent
@@ -50,6 +51,7 @@ class Session:
         fill_simulator: MarketOrderFillSimulator,
         symbol: Symbol,
     ) -> None:
+        assert_paper_only(broker.is_paper)
         self.engine = engine
         self.broker = broker
         self.accounting = accounting

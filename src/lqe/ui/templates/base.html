@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBSIDIAN DESK — {% block title %}Floor{% endblock %}</title>
+<link rel="stylesheet" href="/theme/desk.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- STATUS RAIL -->
+  <div class="rail">
+    <span class="brand">OBSIDIAN <b>DESK</b></span>
+    <span class="seg"><span class="dot{% if kill_active %} off{% endif %}" id="feed-dot"></span><b>PAPER</b> · simulated</span>
+    {% if snapshot.data_health %}
+    <span class="seg">feed <b>{{ snapshot.data_health[0].symbol }}</b> · {{ snapshot.data_health[0].bars_seen }} bars</span>
+    {% endif %}
+    <span class="spacer"></span>
+    <span class="stat"><span class="k">Session P/L (sim)</span>
+      <span class="v mono {% if snapshot.session and snapshot.session.pnl_pct >= 0 %}pos{% else %}neg{% endif %}" id="session-pnl">
+        {% if snapshot.session %}{{ "%+.2f"|format(snapshot.session.pnl_pct) }}%{% else %}—{% endif %}
+      </span></span>
+    <span class="stat"><span class="k">Exposure</span>
+      <span class="v mono" id="session-exposure">{% if snapshot.session %}{{ "%.2f"|format(snapshot.session.exposure) }}×{% else %}—{% endif %}</span></span>
+    <span class="stat"><span class="k">Drawdown</span>
+      <span class="v mono neg" id="session-dd">{% if snapshot.session %}−{{ "%.1f"|format(snapshot.session.drawdown * 100) }}%{% else %}—{% endif %}</span></span>
+    <span class="shield">PAPER · LIVE LOCKED</span>
+    <button class="kill{% if kill_active %} armed{% endif %}" id="kill-btn">{% if kill_active %}KILLED{% else %}KILL{% endif %}</button>
+  </div>
+
+  <!-- BODY -->
+  <div class="body">
+    <div class="spine">
+      {% for id, label, fk, href in nav %}
+      <a class="mode{% if active == id %} active{% endif %}" href="{{ href }}">
+        <span>{{ label }}</span><span class="fk">{{ fk }}</span>
+      </a>
+      {% endfor %}
+    </div>
+
+    <div class="main">
+      {% block main %}{% endblock %}
+    </div>
+
+    <div class="insp">
+      {% block inspector %}
+      <h2>◇ Intelligence · Meta-Layer</h2>
+      <div class="narr">
+        Observation-only. The meta-layer <b>influences no orders</b> and sets no
+        <span style="color:var(--intel)">validated</span> status — only a passing gate run can.
+      </div>
+      {% endblock %}
+    </div>
+  </div>
+
+  <!-- TAPE (structured, not a console) -->
+  <div class="tape">
+    <div class="tape-h">Tape · events<span class="pill">structured · not a console</span></div>
+    <div id="tape-body">
+      {% for r in (tape or [])|reverse %}
+      <div class="tr">
+        <span class="t">{{ r.sim_ts.strftime('%H:%M:%S') }}</span>
+        <span class="ty">{{ r.type }}</span>
+        <span class="m">{{ r.summary }}</span>
+        <span class="d">{{ r.detail }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script src="/theme/desk.js"></script>
+</body>
+</html>

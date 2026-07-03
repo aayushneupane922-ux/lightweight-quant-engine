@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Catalog{% endblock %}
+{% block main %}
+<div class="head">
+  <h1>Model Catalog</h1>
+  <span class="sub">{{ rows|length }} models · browse the library</span>
+</div>
+<div class="honesty">
+  <span class="tag">CURATION</span>
+  Every listed model is deterministic, permissively licensed, and manifest-complete.
+  A model is <b>unproven</b> until a gate run promotes it; failures are quarantined below, never hidden.
+</div>
+
+<table class="data">
+  <thead>
+    <tr><th>Model</th><th>Family</th><th style="text-align:left">One-liner</th><th>Libraries</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr{% if r.quarantined %} class="lowN"{% endif %}>
+      <td>{{ r.model_id }}</td>
+      <td>{{ r.family }}</td>
+      <td style="text-align:left; color:var(--mute)">{{ r.one_liner }}</td>
+      <td>{{ r.oss_libs|join(", ") }}</td>
+      <td>
+        {% if r.quarantined %}
+        <span class="fail" title="{{ r.quarantine_reason }}">quarantined</span>
+        {% elif r.status == 'validated' %}
+        <span class="tag-validated">validated</span>
+        {% else %}
+        <span class="tag-unproven">{{ r.status }}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -17,3 +17,6 @@ __pycache__/
 # secrets — there are NONE in the MVP; keep it that way
 .env
 *.key
+
+# Editor/preview tooling (references the local venv; not portable)
+.claude/

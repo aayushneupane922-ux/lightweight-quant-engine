@@ -1,0 +1,130 @@
+/* Obsidian Desk — design tokens + components (docs/05 §5.1, archive/28).
+   Ported from mockups/obsidian-desk-model-floor.html. Fonts are declared
+   with a system fallback stack and NO CDN link — the app is localhost-only
+   with no outbound network (docs/11 §11.11). Drop Inter / JetBrains Mono
+   .woff2 files into theme/fonts/ and the @font-face rules below pick them
+   up; absent them, the stack degrades gracefully to system-ui/mono. */
+
+@font-face {
+  font-family: "Inter"; font-style: normal; font-weight: 400 600; font-display: swap;
+  src: local("Inter"), url("fonts/Inter.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: local("JetBrains Mono"), url("fonts/JetBrainsMono.woff2") format("woff2");
+}
+
+:root {
+  --void:#07090D; --desk:#0E131B; --slab:#131A24; --ridge:#1E2836;
+  --ink:#E9EEF5; --mute:#6B7A90; --amber:#F0A62A;
+  --long:#35C08B; --short:#F0524D; --intel:#7C7BF2;
+  --warn:#F0A62A; --halt:#F0524D;
+  --ui:"Inter",system-ui,sans-serif; --data:"JetBrains Mono",ui-monospace,monospace;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  background:var(--void); color:var(--ink); font-family:var(--ui); font-size:13px;
+  -webkit-font-smoothing:antialiased; height:100vh; overflow:hidden;
+}
+.mono { font-family:var(--data); font-variant-numeric:tabular-nums; }
+.app { display:grid; grid-template-rows:auto 1fr auto; height:100vh; }
+a { color:inherit; text-decoration:none; }
+
+/* status rail */
+.rail { display:flex; align-items:center; gap:22px; padding:9px 16px; background:var(--slab);
+  border-bottom:1px solid var(--ridge); }
+.brand { font-weight:600; letter-spacing:.14em; font-size:12px; }
+.brand b { color:var(--amber); }
+.rail .dot { width:7px; height:7px; border-radius:50%; background:var(--long);
+  box-shadow:0 0 8px var(--long); display:inline-block; margin-right:6px; }
+.rail .dot.off { background:var(--short); box-shadow:0 0 8px var(--short); }
+.rail .seg { color:var(--mute); font-size:11px; letter-spacing:.04em; }
+.rail .seg b { color:var(--ink); font-weight:500; }
+.rail .spacer { flex:1; }
+.shield { border:1px solid var(--amber); color:var(--amber); border-radius:3px;
+  padding:4px 9px; font-size:10.5px; letter-spacing:.16em; font-weight:600; }
+.stat { display:flex; flex-direction:column; line-height:1.2; }
+.stat .k { color:var(--mute); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; }
+.stat .v { font-size:14px; }
+.pos { color:var(--long); } .neg { color:var(--short); }
+.kill { background:transparent; border:1px solid var(--short); color:var(--short);
+  font-family:var(--ui); font-weight:600; letter-spacing:.14em; font-size:11px;
+  padding:7px 14px; border-radius:3px; cursor:pointer; }
+.kill:hover { background:rgba(240,82,77,.12); }
+.kill.armed { background:var(--short); color:var(--void); }
+
+/* body layout */
+.body { display:grid; grid-template-columns:64px 1fr 320px; min-height:0; }
+.spine { background:var(--desk); border-right:1px solid var(--ridge);
+  display:flex; flex-direction:column; padding:12px 0; gap:4px; }
+.mode { display:flex; flex-direction:column; align-items:center; gap:3px; padding:11px 0;
+  color:var(--mute); cursor:pointer; border-left:2px solid transparent; font-size:9.5px;
+  letter-spacing:.05em; }
+.mode.active { color:var(--amber); border-left-color:var(--amber); background:rgba(240,166,42,.06); }
+.mode:hover:not(.active) { color:var(--ink); }
+.mode .fk { font-family:var(--data); font-size:8px; color:var(--mute); opacity:.7; }
+
+.main { padding:14px 16px; overflow:auto; min-height:0; }
+.head { display:flex; align-items:baseline; gap:12px; margin-bottom:4px; }
+.head h1 { font-size:15px; font-weight:600; letter-spacing:.01em; }
+.head .sub { color:var(--mute); font-size:11px; }
+.honesty { background:rgba(124,123,242,.07); border:1px solid rgba(124,123,242,.28);
+  color:#b9b6f7; border-radius:3px; padding:6px 10px; font-size:10.5px; letter-spacing:.03em;
+  margin:8px 0 14px; display:flex; gap:8px; align-items:center; }
+.honesty .tag { color:var(--intel); font-weight:600; letter-spacing:.1em; }
+
+/* model floor grid */
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(228px,1fr)); gap:10px; }
+.cell { position:relative; background:var(--slab); border:1px solid var(--ridge);
+  border-radius:5px; padding:12px; overflow:hidden; }
+.cell::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--intel); opacity:.4; }
+.cell .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:9px; }
+.cell .name { font-weight:600; font-size:12.5px; }
+.cell .fam { color:var(--mute); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; margin-top:2px; }
+.badge { font-family:var(--data); font-size:9px; font-weight:700; letter-spacing:.1em;
+  padding:3px 6px; border-radius:3px; }
+.b-armed { color:var(--mute); border:1px solid var(--ridge); }
+.b-long { color:var(--long); border:1px solid rgba(53,192,139,.45); background:rgba(53,192,139,.08); }
+.b-short { color:var(--short); border:1px solid rgba(240,82,77,.45); background:rgba(240,82,77,.08); }
+.b-fired { color:var(--amber); border:1px solid rgba(240,166,42,.5); background:rgba(240,166,42,.1); }
+.b-halted { color:var(--short); border:1px solid rgba(240,82,77,.45); }
+.row { display:flex; justify-content:space-between; align-items:flex-end; }
+.kv .k { color:var(--mute); font-size:9px; letter-spacing:.08em; text-transform:uppercase; }
+.kv .v { font-size:13px; }
+.foot { display:flex; justify-content:space-between; margin-top:9px; padding-top:8px;
+  border-top:1px solid var(--ridge); color:var(--mute); font-size:9.5px; letter-spacing:.03em; }
+.tag-unproven { font-family:var(--data); font-size:8.5px; color:var(--mute);
+  border:1px solid var(--ridge); padding:1px 5px; border-radius:3px; letter-spacing:.08em; }
+.tag-validated { font-family:var(--data); font-size:8.5px; color:var(--long);
+  border:1px solid rgba(53,192,139,.45); padding:1px 5px; border-radius:3px; letter-spacing:.08em; }
+
+/* inspector */
+.insp { background:var(--desk); border-left:1px solid var(--ridge); padding:14px; overflow:auto; min-height:0; }
+.insp h2 { font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--intel); margin-bottom:10px; }
+.narr { background:var(--slab); border:1px solid var(--ridge); border-left:2px solid var(--intel);
+  border-radius:4px; padding:11px; font-size:12px; line-height:1.5; color:#c7ccd6; }
+
+/* tables */
+table.data { width:100%; border-collapse:collapse; font-size:11px; }
+table.data th { color:var(--mute); font-weight:500; text-align:right; padding:6px 8px; font-size:9.5px;
+  letter-spacing:.05em; text-transform:uppercase; border-bottom:1px solid var(--ridge); }
+table.data th:first-child { text-align:left; }
+table.data td { text-align:right; padding:6px 8px; font-family:var(--data); border-top:1px solid rgba(30,40,54,.5); }
+table.data td:first-child { text-align:left; font-family:var(--ui); color:var(--ink); }
+.pass { color:var(--long); } .fail { color:var(--short); }
+.lowN { color:var(--mute); opacity:.6; }
+
+/* tape */
+.tape { background:var(--slab); border-top:1px solid var(--ridge); height:132px; overflow:auto; }
+.tape-h { display:flex; align-items:center; gap:10px; padding:7px 14px; color:var(--mute);
+  font-size:10px; letter-spacing:.12em; text-transform:uppercase; border-bottom:1px solid var(--ridge); }
+.tape-h .pill { margin-left:auto; font-family:var(--data); color:var(--mute);
+  border:1px solid var(--ridge); border-radius:10px; padding:2px 9px; font-size:9px; letter-spacing:.05em; }
+.tr { display:grid; grid-template-columns:76px 118px 1fr auto; gap:10px; align-items:center;
+  padding:5px 14px; border-bottom:1px solid rgba(30,40,54,.5); font-size:11px; }
+.tr .t { font-family:var(--data); color:var(--mute); font-size:10.5px; }
+.tr .ty { font-family:var(--data); font-size:9px; font-weight:700; letter-spacing:.06em; color:var(--intel); }
+.tr .m { color:var(--ink); }
+.tr .d { color:var(--mute); font-family:var(--data); font-size:10px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }

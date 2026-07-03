@@ -258,7 +258,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.set_defaults(func=_cmd_validate)
 
+    desk_parser = subparsers.add_parser(
+        "desk", help="Serve the Obsidian Desk web UI on 127.0.0.1 (localhost only)."
+    )
+    desk_parser.add_argument(
+        "--audit", default=None, help="Path to an audit JSONL log to render (optional)."
+    )
+    desk_parser.add_argument("--symbol", default="BTC-USDT")
+    desk_parser.add_argument(
+        "--kill-switch", default=None, help="Path to the persistent kill-switch file."
+    )
+    desk_parser.add_argument("--port", type=int, default=8137)
+    desk_parser.set_defaults(func=_cmd_desk)
+
     return parser
+
+
+def _cmd_desk(args: argparse.Namespace) -> int:
+    # Imported lazily so `lqe ingest/backtest/validate` work without the
+    # optional `ui` extra installed (fastapi/uvicorn/jinja2). The CLI (not
+    # `ui/`) owns the risk/kill-switch import and builds the ControlPlane.
+    from lqe.live.control import ControlPlane
+    from lqe.risk.kill_switch import KillSwitch
+    from lqe.ui.app import BIND_HOST, serve
+    from lqe.ui.builder import build_desk_data
+
+    kill_switch = KillSwitch(Path(args.kill_switch)) if args.kill_switch else KillSwitch.in_memory()
+    data = build_desk_data(
+        control=ControlPlane(kill_switch=kill_switch),
+        audit_path=Path(args.audit) if args.audit else None,
+        symbol=args.symbol,
+    )
+    print(f"Obsidian Desk on http://{BIND_HOST}:{args.port} (paper-only, localhost)")
+    serve(data, port=args.port)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

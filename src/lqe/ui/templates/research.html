@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Research{% endblock %}
+{% block main %}
+<div class="head">
+  <h1>Research · Gate Evidence</h1>
+  <span class="sub">{{ rows|length }} experiments · walk-forward + DSR + PBO + cost</span>
+</div>
+<div class="honesty">
+  <span class="tag">OUT-OF-SAMPLE</span>
+  A model is only <b>validated</b> when it passes the gate: walk-forward OOS + DSR + PBO +
+  cost survival + beats equal-weight/random. Every number below carries its sample size.
+</div>
+
+<table class="data">
+  <thead>
+    <tr>
+      <th>Run · strategy</th><th>Sharpe</th><th>DSR</th><th>PBO</th>
+      <th>Max DD</th><th>Trades</th><th>Cost bps</th><th>Gate</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.strategy }} <span class="lowN">{{ r.run_id }}</span></td>
+      <td>{{ "%.2f"|format(r.sharpe) }}</td>
+      <td>{{ "%.2f"|format(r.dsr) }}</td>
+      <td>{{ "%.2f"|format(r.pbo) }}</td>
+      <td>{{ "%.1f"|format(r.max_dd * 100) }}%</td>
+      <td{% if r.n_trades < 200 %} class="lowN"{% endif %}>{{ r.n_trades }}</td>
+      <td>{{ "%.0f"|format(r.cost_bps) }}</td>
+      <td class="{% if r.passed_gate %}pass{% else %}fail{% endif %}">
+        {% if r.passed_gate %}★ PASS{% else %}✗ FAIL{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not rows %}
+    <tr><td colspan="8" class="lowN" style="text-align:center">No experiments recorded yet — run <code>lqe validate</code>.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endblock %}

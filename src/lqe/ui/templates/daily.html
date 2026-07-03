@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Daily{% endblock %}
+{% block main %}
+<div class="head">
+  <h1>Daily Report</h1>
+  <span class="sub">{{ rows|length }} sessions · reconciled paper book</span>
+</div>
+<div class="honesty">
+  <span class="tag">SIMULATED</span>
+  These are paper sessions on a single simulated book — not evidence of edge. Each row is
+  reconciled against the audit log independently.
+</div>
+
+<table class="data">
+  <thead>
+    <tr>
+      <th>Session</th><th>Start equity</th><th>End equity</th><th>P/L (sim)</th>
+      <th>Trades</th><th>Max intraday DD</th><th>Reconciled</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.session_date }}</td>
+      <td>{{ "%.2f"|format(r.start_equity) }}</td>
+      <td>{{ "%.2f"|format(r.end_equity) }}</td>
+      <td class="{% if r.pnl >= 0 %}pass{% else %}fail{% endif %}">{{ "%+.2f"|format(r.pnl) }}</td>
+      <td>{{ r.n_trades }}</td>
+      <td>−{{ "%.1f"|format(r.max_intraday_dd * 100) }}%</td>
+      <td class="{% if r.reconciled %}pass{% else %}fail{% endif %}">{% if r.reconciled %}✓{% else %}✗ MISMATCH{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% if not rows %}
+    <tr><td colspan="7" class="lowN" style="text-align:center">No daily reports yet.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endblock %}
+{% block inspector %}
+<h2>◇ Reconciliation</h2>
+<div class="narr">
+  Every fill is independently replayed from the audit log and compared to the running ledger.
+  A mismatch halts the book (<b>ReconciliationError</b>) rather than continuing on possibly-corrupt state.
+</div>
+{% endblock %}

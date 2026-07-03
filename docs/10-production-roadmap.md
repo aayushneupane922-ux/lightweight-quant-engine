@@ -19,7 +19,7 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 
 ## Release checkpoints (thin-slice first)
 - **v0.1 — Honest loop (headless):** M0–M4. You can ingest, backtest, and *validate* — the gate exists. Nothing autonomous yet. ✅ **shipped**, tag `v0.1` — `lqe ingest`/`lqe backtest`/`lqe validate` verified end-to-end on real BTC-USDT/ETH-USDT data.
-- **v0.2 — Usable terminal:** + M5, M6, M7. Catalog + Obsidian Desk UI + risk/kill.
+- **v0.2 — Usable terminal:** + M5, M6, M7. Catalog + Obsidian Desk UI + risk/kill. ✅ **shippable** at `m7-done` — `lqe desk` serves the Floor/Catalog/Research/Risk/Daily views on 127.0.0.1, read-only over the audit log with a human KILL.
 - **v0.3 — Autonomous:** + M8, M9. Learn→adjust→learn loop + aggressive autopilot + local LLM.
 - **v0.4 — Cinematic:** + M10. Interactive 3D neural-web + timeline replay.
 - **v1.0 — Production-ready local app:** + M11, M12. Scaled catalog, hardened, packaged installer.
@@ -91,13 +91,13 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **Tests:** adding a model = folder passing intake · adapters produce deterministic strategies · quarantine transparent (incl. the 5 heavy-lib adapters, which quarantine cleanly when `.[models]` isn't installed) · license gate green.
 - **Exit gate:** ✅ 11 models listed + backtestable + gate-eligible; `git tag m6-done`.
 
-## M7 — Obsidian Desk web UI (localhost, no CLI)  · L · Dep: M4, M5, M6
-- [ ] FastAPI + NiceGUI app on `127.0.0.1`; theme layer = the design tokens ([`05`](05-ui-and-3d-visualization.md), [`archive/28`](archive/28-ui-ux-design-system.md)); ship Inter + JetBrains Mono.
-- [ ] Views: Floor (instrument cells), Catalog, Research (backtest + gate evidence), Risk, Daily report.
-- [ ] **Remove all CLI/stdout** → progress strips, tables/KPIs/ECharts, a structured Tape (one row per audit event).
-- [ ] KILL/freeze control; StateReader (read-only); WebSocket live updates; honesty layer everywhere.
-- **Tests:** UI renders no unstructured stdout (assert) · kill flips flag + blocks orders · UI constructs no `Order`, imports no risk/execution internals · bound to 127.0.0.1 only.
-- **Exit gate:** app matches the Obsidian Desk mockup, no CLI feed, honesty overlays present; `git tag m7-done`. **→ v0.2 shippable.**
+## M7 — Obsidian Desk web UI (localhost, no CLI)  · L · Dep: M4, M5, M6  ✅ m7-done
+- [x] FastAPI + Jinja2 + native Starlette WebSocket on `127.0.0.1` (NiceGUI rejected — its `docutils`/`bidict`/`orjson` chain fails the tiered license gate; see `pyproject.toml`); theme layer = the design tokens ([`05`](05-ui-and-3d-visualization.md), [`archive/28`](archive/28-ui-ux-design-system.md)); Inter + JetBrains Mono self-hosted with a system fallback (no CDN — localhost-only).
+- [x] Views: Floor (model cells), Catalog, Research (backtest + gate evidence), Risk, Daily report.
+- [x] **No CLI/stdout in the GUI** → honesty banners, tables/KPIs, a structured Tape (one row per audit event); asserted by a honesty test.
+- [x] KILL/freeze control via `live.control` (the only write path); `storage.state_reader` (read-only); WebSocket live updates; honesty layer everywhere (SIMULATED + PAPER·LIVE LOCKED + sample sizes + unproven/validated).
+- **Tests:** ✅ UI renders no unstructured stdout · kill flips the persistent switch + blocks risk-increasing orders · UI constructs no `Order`, imports no risk/execution/autonomy internals (AST) · bound to 127.0.0.1 only.
+- **Exit gate:** ✅ app matches the Obsidian Desk mockup, no CLI feed, honesty overlays present; `git tag m7-done`. **→ v0.2 shippable.**
 
 ## M8 — Autonomy loop  · L · Dep: M4 (+M3, M2)  ← never before M4
 - [ ] `autonomy/orchestrator.py` (control flow) + `autonomy/optimizer.py` (**Optuna**, seeded) + wire `Validator`/`PromotionGate`.

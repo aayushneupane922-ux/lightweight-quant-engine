@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Risk{% endblock %}
+{% block main %}
+<div class="head">
+  <h1>Risk · Limits & Kill State</h1>
+  <span class="sub">paper book · human-owned kill switch</span>
+</div>
+<div class="honesty">
+  <span class="tag">CONTROL</span>
+  The kill switch is human-owned and un-overridable by software. It persists across restart and
+  only a named operator can clear it.
+</div>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))">
+  <div class="cell">
+    <div class="fam">Kill state</div>
+    <div class="name" style="font-size:18px; margin-top:6px" class="{% if kill_active %}neg{% else %}pos{% endif %}">
+      {% if kill_active %}<span class="neg">KILLED</span>{% else %}<span class="pos">ACTIVE</span>{% endif %}
+    </div>
+  </div>
+  {% if snapshot.session %}
+  <div class="cell">
+    <div class="fam">Equity (sim)</div>
+    <div class="name mono" style="font-size:18px; margin-top:6px">{{ "%.2f"|format(snapshot.session.equity) }}</div>
+  </div>
+  <div class="cell">
+    <div class="fam">Gross exposure</div>
+    <div class="name mono" style="font-size:18px; margin-top:6px">{{ "%.2f"|format(snapshot.session.exposure) }}×</div>
+  </div>
+  <div class="cell">
+    <div class="fam">Drawdown</div>
+    <div class="name mono neg" style="font-size:18px; margin-top:6px">−{{ "%.1f"|format(snapshot.session.drawdown * 100) }}%</div>
+  </div>
+  {% endif %}
+</div>
+
+<h2 style="margin-top:20px; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--intel)">Active breaches</h2>
+{% if snapshot.breaches %}
+<table class="data" style="margin-top:8px">
+  <tbody>
+    {% for b in snapshot.breaches %}
+    <tr><td class="fail">{{ b }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="narr" style="margin-top:8px">No active breaches.</div>
+{% endif %}
+{% endblock %}
+{% block inspector %}
+<h2>◇ Kill / Freeze</h2>
+<div class="narr">
+  Use the <b>KILL</b> button in the status rail to halt all risk-increasing orders instantly.
+  De-risking exits are still permitted. Clearing requires a named human operator.
+</div>
+{% endblock %}

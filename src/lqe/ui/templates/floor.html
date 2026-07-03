@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Floor{% endblock %}
+{% block main %}
+<div class="head">
+  <h1>Model Floor</h1>
+  <span class="sub">{{ snapshot.models|length }} models · one live feed · simulated fills</span>
+</div>
+<div class="honesty">
+  <span class="tag">SIMULATED</span>
+  Live performance is <b>not</b> evidence of edge — the sample is tiny. Ranking is
+  sample-gated; send anything interesting to Research to validate.
+</div>
+
+<div class="grid">
+  {% for m in snapshot.models %}
+  <div class="cell">
+    <div class="top">
+      <div>
+        <div class="name">{{ m.model_id }}</div>
+        <div class="fam">{{ m.family }}</div>
+      </div>
+      <span class="{{ 'badge b-' + m.state.lower() }}">{{ m.state }}</span>
+    </div>
+    <div class="row">
+      <div class="kv">
+        <div class="k">Sim return</div>
+        <div class="v mono {% if m.sim_return_pct is not none and m.sim_return_pct >= 0 %}pos{% elif m.sim_return_pct is not none %}neg{% endif %}">
+          {% if m.sim_return_pct is none %}—{% else %}{{ "%+.2f"|format(m.sim_return_pct) }}%{% endif %}
+        </div>
+      </div>
+      <div class="kv" style="text-align:right">
+        <div class="k">Trades</div>
+        <div class="v mono">{{ m.n_trades }}</div>
+      </div>
+    </div>
+    <div class="foot">
+      <span>{% if m.n_trades < 20 %}<span class="lowN">low sample (n={{ m.n_trades }})</span>{% else %}n={{ m.n_trades }}{% endif %}</span>
+      <span class="{% if m.status == 'validated' %}tag-validated{% else %}tag-unproven{% endif %}">{{ m.status }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

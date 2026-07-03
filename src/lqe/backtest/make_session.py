@@ -59,6 +59,13 @@ class Session:
         self._sizer = sizer
         self._fill_simulator = fill_simulator
         self._symbol = symbol
+        # Analytics telemetry (docs/10 M4): one equity mark per bar, one
+        # trade_pnl per realized (SELL) fill, one notional per fill. Cheap
+        # to track here and it's what the Validator's metrics/DSR/PBO need
+        # — no separate bookkeeping pass over the audit log required.
+        self.equity_curve: list[Decimal] = [accounting.cash]
+        self.trade_pnls: list[float] = []
+        self.trade_notionals: list[Decimal] = []
         self._strategy.on_start(self._context())
 
     def _context(self) -> Context:
@@ -74,7 +81,12 @@ class Session:
         for order in list(self.broker.working_orders()):
             fill = self._fill_simulator.fill(order, fill_bar=bar)
             self.engine.emit("FillEvent", fill)
+            realized_before = self.accounting.position_state(self._symbol).realized_pnl
             self.accounting.apply_fill(symbol=self._symbol, side=order.side, fill=fill)
+            if order.side == "SELL":
+                realized_after = self.accounting.position_state(self._symbol).realized_pnl
+                self.trade_pnls.append(float(realized_after - realized_before))
+            self.trade_notionals.append(fill.fill_qty * fill.fill_px)
             status: Literal["PARTIALLY_FILLED", "FILLED"] = (
                 "PARTIALLY_FILLED" if fill.partial else "FILLED"
             )
@@ -127,6 +139,7 @@ class Session:
                 fees_paid=position.fees_paid,
             ),
         )
+        self.equity_curve.append(self.accounting.equity({self._symbol: bar.c}))
 
 
 def make_session(

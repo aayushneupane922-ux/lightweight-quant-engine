@@ -13,6 +13,7 @@ dependencies = [
                        # required by zoneinfo on platforms with no system
                        # tz database (Windows), needed to round-trip UTC
                        # timestamps through pyarrow/Parquet
+  "numpy",             # BSD-3 — self-contained DSR/PBO/metrics math (M4)
 ]
 
 # The rest of the docs/07 (Cost, Stack & Local LLM) stack lands milestone-by-
@@ -22,7 +23,6 @@ dependencies = [
 data = [
   "polars",            # MIT — fast dataframes, once a milestone needs vectorized transforms
   "pandas",            # BSD-3
-  "numpy",             # BSD-3
 ]
 models = [
   "pandas-ta",         # MIT — indicators (M3/M6)

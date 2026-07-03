@@ -66,12 +66,12 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **Tests:** end-to-end backtest deterministic (identical audit hashes) · accounting reconciles (cash+positions==equity) · fills never use future data (bar-completeness) · parity (replay==backtest decisions).
 - **Exit gate:** `lqe backtest` runs on a real crypto bundle deterministically; `git tag m3-done`. → **ship v0.1 after M4.**
 
-## M4 — Validation stack (the promotion gate)  · L · Dep: M3  ← the real product
-- [ ] `analytics/metrics.py` + `dsr.py` + `pbo.py` (self-contained numpy).
-- [ ] Walk-forward runner; cost-sensitivity sweep (0/5/10/20 bps); benchmark set (buy-hold, equal-weight, best-single, random-entry).
-- [ ] `analytics/registry.py` (experiments/trials table with full provenance: config, data_version, git sha, seed, trial index).
-- [ ] `autonomy/validator.py` + `autonomy/promotion_gate.py`: `PromotionGate.check(candidate) → PASS/FAIL + evidence`; **trial-counting** feeds DSR/PBO.
-- [ ] `analytics/tearsheet.py` (markdown/HTML, "no profitability claimed" disclaimer).
+## M4 — Validation stack (the promotion gate)  · L · Dep: M3  ← the real product  ✅ `m4-done`
+- [x] `analytics/metrics.py` + `dsr.py` + `pbo.py` (self-contained numpy).
+- [x] Walk-forward runner; cost-sensitivity sweep (0/5/10/20 bps); benchmark set (buy-hold, equal-weight, best-single, random-entry).
+- [x] `analytics/registry.py` (experiments/trials table with full provenance: config, data_version, git sha, seed, trial index).
+- [x] `autonomy/validator.py` + `autonomy/promotion_gate.py`: `PromotionGate.check(candidate) → PASS/FAIL + evidence`; **trial-counting** feeds DSR/PBO.
+- [x] `analytics/tearsheet.py` (markdown/HTML, "no profitability claimed" disclaimer).
 - **Tests:** DSR/PBO correct on known inputs · gate FAILs an overfit candidate · gate PASSes a robust synthetic · trial count spans all trials/models · LLM/author cannot set `validated`.
 - **Exit gate:** a candidate can be promoted **only** via the gate, with evidence recorded; `git tag m4-done`. **→ v0.1 (headless honest loop) shippable.**
 

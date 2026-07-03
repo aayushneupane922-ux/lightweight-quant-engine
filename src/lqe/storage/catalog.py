@@ -123,6 +123,13 @@ class Catalog:
         ).to_arrow_table().to_pylist()
         return result
 
+    @property
+    def connection(self) -> duckdb.DuckDBPyConnection:
+        """The open connection, so sibling tables (analytics/registry.py's
+        experiments/trials) can live in the same catalog.duckdb file without
+        each module opening its own competing file handle."""
+        return self._con
+
     def close(self) -> None:
         self._con.close()
 

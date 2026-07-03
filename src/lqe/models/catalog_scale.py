@@ -145,8 +145,16 @@ def _ma_cross_factory(
 
 
 def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    # 3 assets, not 2: skfolio's HierarchicalRiskParity computes an "optimal
+    # number of clusters" via a gap statistic that needs >=3 assets to have
+    # any candidate cluster count to search over; with exactly 2 it raises
+    # (`argmax of an empty sequence`) regardless of how much history is
+    # given. This path was never actually exercised before docs/12 M13
+    # installed skfolio/PyPortfolioOpt/riskfolio-lib -- all 3 were quarantined
+    # until then, so the 2-asset universe's HRP incompatibility was latent.
     universe: dict[str, list[float]] = {
         symbol: [1.0, 2.0, 3.0, 4.0], "ETH-USDT": [1.0, 1.1, 1.2, 1.3],
+        "SOL-USDT": [1.0, 0.95, 1.05, 1.0],
     }
     hedge = [10.0, 10.5, 10.2, 10.8]
 

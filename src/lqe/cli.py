@@ -335,6 +335,43 @@ def build_parser() -> argparse.ArgumentParser:
     )
     backup_parser.set_defaults(func=_cmd_backup)
 
+    live_parser = subparsers.add_parser(
+        "live",
+        help="Run every admitted catalog model as its own paper book against continuously "
+        "polled market data, autonomy loop narrating live on the Obsidian Desk (paper-only).",
+    )
+    live_parser.add_argument(
+        "--adapter", choices=["ccxt", "csv"], default="ccxt",
+        help="ccxt polls a real public exchange endpoint; csv replays a local fixture "
+        "(offline demos/tests).",
+    )
+    live_parser.add_argument("--exchange", default="binance")
+    live_parser.add_argument("--csv-path", default=None, help="Required when --adapter csv")
+    live_parser.add_argument("--symbol", default="BTC-USDT")
+    live_parser.add_argument("--timeframe", default="1m")
+    live_parser.add_argument("--poll-seconds", type=float, default=60.0)
+    live_parser.add_argument("--lookback-bars", type=int, default=300)
+    live_parser.add_argument("--starting-cash", type=float, default=10_000.0)
+    live_parser.add_argument(
+        "--autonomy-every", type=int, default=5,
+        help="run one autonomy step every N new bars",
+    )
+    live_parser.add_argument("--n-trials", type=int, default=8)
+    live_parser.add_argument("--min-periods", type=int, default=200)
+    live_parser.add_argument(
+        "--llm", action="store_true",
+        help="Use a local Ollama narrator (falls back to rule-based if the server is absent).",
+    )
+    live_parser.add_argument("--llm-model", default="llama3.2:3b")
+    live_parser.add_argument("--kill-switch", default=None)
+    live_parser.add_argument("--port", type=int, default=8137)
+    live_parser.add_argument("--no-browser", action="store_true")
+    live_parser.add_argument(
+        "--max-polls", type=int, default=None,
+        help="Stop after N polls (bounded demo/test runs); omit to run forever.",
+    )
+    live_parser.set_defaults(func=_cmd_live)
+
     return parser
 
 
@@ -467,6 +504,218 @@ def _cmd_autopilot(args: argparse.Namespace) -> int:
     finally:
         if catalog_cm is not None:
             catalog_cm.close()
+    return 0
+
+
+def _cmd_live(args: argparse.Namespace) -> int:
+    # Imports lazy: `live` needs the `ui` + `search` extras (and benefits from
+    # but does not require `models` -- native catalog entries still admit).
+    # Ports scripts/run_live_fleet.py (post-v1.0 extension) into the tagged
+    # CLI surface (docs/12 M14); paper-only end to end -- PaperBroker is
+    # still the only ExecutionAdapter, make_order the only Order
+    # constructor, ccxt used read-only for public OHLCV, and one shared
+    # disk-persistable KillSwitch halts every model's new entries at once.
+    import threading
+    import time
+    import warnings
+    import webbrowser
+
+    from lqe.autonomy.narrator import make_narrator
+    from lqe.autonomy.optimizer import OptunaOptimizer
+    from lqe.autonomy.orchestrator import Orchestrator
+    from lqe.autonomy.promotion_gate import GateThresholds, PromotionGate
+    from lqe.autonomy.searchable_scaled import broad_searchable_models
+    from lqe.autonomy.validator import Validator
+    from lqe.core.clock import ManualClock
+    from lqe.core.engine import Engine
+    from lqe.core.events import MarketEvent
+    from lqe.data.csv_replay import CsvReplayAdapter
+    from lqe.live.control import ControlPlane
+    from lqe.live.live_feed import LiveFeed
+    from lqe.live.merge import merged_records
+    from lqe.live.multi_model_runner import LiveMultiModelRunner, build_fleet
+    from lqe.models.catalog import ModelCatalog
+    from lqe.models.catalog_scale import build_scaled_catalog
+    from lqe.risk.kill_switch import KillSwitch
+    from lqe.risk.model import RiskModel
+    from lqe.storage.state_reader import CatalogModelInfo, StateReader
+    from lqe.ui.app import BIND_HOST, serve
+    from lqe.ui.data import CatalogRow, DeskData
+
+    def _catalog_rows(catalog: ModelCatalog) -> list[CatalogRow]:
+        rows = [
+            CatalogRow(
+                model_id=e.manifest.id, family=e.manifest.family,
+                one_liner=e.manifest.one_liner, oss_libs=list(e.manifest.oss_libs),
+                status=e.manifest.status,
+            )
+            for e in catalog.all()
+        ]
+        rows += [
+            CatalogRow(
+                model_id=q.model_id, family="—", one_liner="", oss_libs=[],
+                status="unproven", quarantined=True, quarantine_reason="; ".join(q.reasons),
+            )
+            for q in catalog.quarantined()
+        ]
+        return rows
+
+    # Cosmetic only: the arch/statsmodels/sklearn heavy adapters print
+    # convergence and feature-name advisories to stderr on every fit --
+    # harmless (doesn't affect determinism or the audit) but spams a
+    # long-running live session's console.
+    warnings.filterwarnings("ignore", category=UserWarning)
+    warnings.filterwarnings("ignore", module="arch.*")
+    warnings.filterwarnings("ignore", module="statsmodels.*")
+
+    symbol = args.symbol
+    starting_cash = Decimal(str(args.starting_cash))
+
+    print(f"lqe live: {args.exchange} {symbol} {args.timeframe} (paper-only)")
+    catalog, results = build_scaled_catalog(symbol)
+    admitted = catalog.all()
+    print(f"fleet: {len(admitted)}/{len(results)} models admitted (rest transparently quarantined)")
+
+    data_adapter: MarketDataAdapter
+    if args.adapter == "csv":
+        if not args.csv_path:
+            print("error: --csv-path is required with --adapter csv")
+            return 1
+        data_adapter = CsvReplayAdapter(
+            Path(args.csv_path), exchange=args.exchange, symbol=symbol, timeframe=args.timeframe
+        )
+    else:
+        data_adapter = CcxtMarketDataAdapter(args.exchange)
+
+    feed = LiveFeed(
+        adapter=data_adapter, symbol=symbol, timeframe=args.timeframe,
+        poll_seconds=args.poll_seconds,
+    )
+    print(f"seeding {args.lookback_bars} recent bars...")
+    history = feed.seed_history(lookback_bars=args.lookback_bars)
+    if not history:
+        print("no bars returned -- check network/exchange/symbol (or --csv-path).")
+        return 1
+    print(f"seeded {len(history)} bars, last close={history[-1].c}")
+
+    kill_switch = KillSwitch(Path(args.kill_switch)) if args.kill_switch else KillSwitch.in_memory()
+    risk_model = RiskModel(kill_switch=kill_switch)
+
+    fleet = build_fleet(admitted, starting_cash=starting_cash)
+    trade_clock = ManualClock(history[0].ts_open)
+    trade_engine = Engine(run_id="live-fleet", book="sandbox", clock=trade_clock)
+    runner = LiveMultiModelRunner(
+        engine=trade_engine, fleet=fleet, symbol=symbol, risk_model=risk_model
+    )
+
+    bars_so_far: list[MarketEvent] = []
+    for bar in history:
+        trade_clock.set(bar.ts_open)
+        runner.process_bar(bar)
+        bars_so_far.append(bar)
+
+    orchestrator = Orchestrator(
+        validator=Validator(),
+        gate=PromotionGate(thresholds=GateThresholds(min_periods=args.min_periods)),
+        optimizer=OptunaOptimizer(),
+        searchable_models=broad_searchable_models(),
+        bars=list(bars_so_far),
+        symbol=symbol,
+        starting_cash=starting_cash,
+        run_id="live-fleet-autonomy",
+        n_trials=args.n_trials,
+        narrator=make_narrator(use_llm=args.llm, model=args.llm_model, seed=0, timeout_s=45.0),
+    )
+
+    catalog_info = [
+        # Every admitted model is author-declared "unproven" at intake
+        # (models.manifest); only a gate PASS elsewhere ever sets "validated".
+        CatalogModelInfo(model_id=e.manifest.id, family=e.manifest.family, status="unproven")
+        for e in admitted
+    ]
+
+    def rebuild_state_reader() -> StateReader:
+        return StateReader(
+            merged_records(trade_engine, orchestrator.engine), catalog=catalog_info
+        )
+
+    control = ControlPlane(kill_switch=kill_switch)
+    desk_data = DeskData(
+        state_reader=rebuild_state_reader(), control=control, catalog_rows=_catalog_rows(catalog)
+    )
+
+    url = f"http://{BIND_HOST}:{args.port}"
+    server_thread = threading.Thread(target=lambda: serve(desk_data, port=args.port), daemon=True)
+    server_thread.start()
+    print(f"Obsidian Desk -> {url}  (paper-only, localhost)")
+    if not args.no_browser:
+        webbrowser.open(url)
+
+    bars_since_step = 0
+    step_count = 0
+
+    def on_new_bars(new_bars: list[MarketEvent]) -> None:
+        nonlocal bars_since_step, step_count
+        for bar in new_bars:
+            trade_clock.set(bar.ts_open)
+            runner.process_bar(bar)
+            bars_so_far.append(bar)
+            bars_since_step += 1
+
+        # Grow the orchestrator's data window as history accumulates. `bars`
+        # is a public dataclass field; `_search_bars` mirrors exactly the
+        # slice `Orchestrator.__post_init__` itself computes from
+        # `bars`/`search_fraction` -- re-deriving it here (rather than
+        # re-running `__post_init__`, which would also reset its own engine
+        # and discard prior autonomy events) keeps that invariant intact.
+        orchestrator.bars = list(bars_so_far)
+        cut = max(2, int(len(orchestrator.bars) * orchestrator.search_fraction))
+        orchestrator._search_bars = list(orchestrator.bars[:cut])  # noqa: SLF001
+
+        if bars_since_step >= args.autonomy_every:
+            bars_since_step = 0
+            step_count += 1
+            state = orchestrator.step(now=new_bars[-1].ts_open)
+            tag = " -> promoted" if state.promoted else ""
+            print(f"[autonomy step {step_count}] {state.focus_model}: {state.verdict}{tag}")
+            if state.narration:
+                print(f"    {state.narration}")
+
+        desk_data.set_state_reader(rebuild_state_reader())
+        print(
+            f"processed {len(new_bars)} new bar(s); total bars={len(bars_so_far)}; "
+            f"kill_active={kill_switch.active}"
+        )
+
+    polls_done = 0
+
+    def _should_stop() -> bool:
+        # Checked once per loop iteration, before each poll. Bounds the run
+        # for tests/scripted demos; None (the default) means run forever.
+        nonlocal polls_done
+        if args.max_polls is not None and polls_done >= args.max_polls:
+            return True
+        polls_done += 1
+        return False
+
+    print(
+        f"polling {args.exchange} every {args.poll_seconds:.0f}s for new {symbol} "
+        f"{args.timeframe} bars... Ctrl+C to stop."
+    )
+    try:
+        while not _should_stop():
+            time.sleep(args.poll_seconds)
+            try:
+                new_bars = feed.poll_new_bars()
+            except Exception as exc:  # noqa: BLE001 - a transient network/exchange
+                # hiccup must not crash a long-running live session; log it
+                # and simply retry on the next poll cycle.
+                print(f"  [poll error, retrying next cycle] {type(exc).__name__}: {exc}")
+                continue
+            if new_bars:
+                on_new_bars(new_bars)
+    except KeyboardInterrupt:
+        print("\nstopped.")
     return 0
 
 

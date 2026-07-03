@@ -10,6 +10,7 @@ rule), never the bar that produced the signal.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Literal
 
 from lqe.core.events import Order
@@ -35,12 +36,17 @@ class PaperBroker:
         ]
 
     def mark_filled(
-        self, order_id: str, *, status: Literal["PARTIALLY_FILLED", "FILLED"]
+        self, order_id: str, *, filled_qty: Decimal, status: Literal["PARTIALLY_FILLED", "FILLED"]
     ) -> Order:
+        """`filled_qty` is what THIS fill covered, not the order's original
+        qty — a partial fill must shrink the working order to the qty still
+        outstanding, or the next bar's resolution re-fills from the
+        original full quantity and double-counts it."""
         order = self._working[order_id]
-        updated = order.model_copy(update={"status": status})
         if status == "FILLED":
             del self._working[order_id]
-        else:
-            self._working[order_id] = updated
+            return order.model_copy(update={"status": status})
+        remaining = order.qty - filled_qty
+        updated = order.model_copy(update={"qty": remaining, "status": status})
+        self._working[order_id] = updated
         return updated

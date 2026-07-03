@@ -90,7 +90,7 @@ class Session:
             status: Literal["PARTIALLY_FILLED", "FILLED"] = (
                 "PARTIALLY_FILLED" if fill.partial else "FILLED"
             )
-            self.broker.mark_filled(order.order_id, status=status)
+            self.broker.mark_filled(order.order_id, filled_qty=fill.fill_qty, status=status)
             self._strategy.on_fill(fill, self._context())
 
     def _process_bar(self, bar: MarketEvent) -> None:

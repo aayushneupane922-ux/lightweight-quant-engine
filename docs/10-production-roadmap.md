@@ -18,7 +18,7 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 `M0 → M1 → M2 → M3 → M4 → M8` gives a **headless, honest, autonomous loop** (the hard core). Then layer **M5, M6, M7** (safety hardening, catalog, UI), then **M9, M10** (autopilot + 3D), then **M11, M12** (scale + hardening/release). Everything else hangs off this spine.
 
 ## Release checkpoints (thin-slice first)
-- **v0.1 — Honest loop (headless):** M0–M4. You can ingest, backtest, and *validate* — the gate exists. Nothing autonomous yet.
+- **v0.1 — Honest loop (headless):** M0–M4. You can ingest, backtest, and *validate* — the gate exists. Nothing autonomous yet. ✅ **shipped**, tag `v0.1` — `lqe ingest`/`lqe backtest`/`lqe validate` verified end-to-end on real BTC-USDT/ETH-USDT data.
 - **v0.2 — Usable terminal:** + M5, M6, M7. Catalog + Obsidian Desk UI + risk/kill.
 - **v0.3 — Autonomous:** + M8, M9. Learn→adjust→learn loop + aggressive autopilot + local LLM.
 - **v0.4 — Cinematic:** + M10. Interactive 3D neural-web + timeline replay.

@@ -27,7 +27,7 @@ import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -87,6 +87,43 @@ class Narrator(Protocol):
         ...
 
 
+# Ollama's structured-output `format` constrains decoding directly (a
+# llama.cpp grammar, not just a prompt instruction), which is what actually
+# gets a small local model to emit the exact whitelisted tool shape instead
+# of free-form prose — verified live: prompting alone got a 3B model to wrap
+# its own prose in a bare JSON array (rejected, correctly, by
+# `parse_tool_calls`); adding this schema got a clean, parseable
+# `{"tool": "narrate", ...}` object every time. The shapes mirror
+# `autonomy/tools.Narrate`/`ProposeSpace` exactly — this narrows *sampling*,
+# it does not loosen `parse_tool_calls`, which still validates independently
+# and still fails closed if a model or a future schema tweak drifts.
+_NARRATE_FORMAT: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "tool": {"type": "string", "enum": ["narrate"]},
+        "text": {"type": "string"},
+        "refs": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["tool", "text", "refs"],
+}
+
+
+def _propose_space_format(model_id: str) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "tool": {"type": "string", "enum": ["propose_space"]},
+            "model_id": {"type": "string", "enum": [model_id]},
+            "ranges": {
+                "type": "object",
+                "additionalProperties": {"type": "array", "items": {"type": "number"}},
+            },
+            "rationale": {"type": "string"},
+        },
+        "required": ["tool", "model_id", "ranges"],
+    }
+
+
 def _template_narration(ctx: OutcomeContext) -> str:
     prefix = (
         f"{ctx.model_id} degraded on the tracked book; de-risked and re-validated. "
@@ -127,6 +164,15 @@ class OllamaNarrator:
     temperature: float = 0.1  # low temperature for a control loop (docs/07 §7.3)
     seed: int = 0
     timeout_s: float = 20.0
+    # Ollama defaults to a model's full training context (often 128k for
+    # modern small models), which asks llama.cpp to allocate a KV-cache
+    # buffer sized for that whole window regardless of how short the actual
+    # prompt is — enough to exhaust available RAM on an ordinary machine and
+    # crash the server process outright. Our prompts are a few hundred
+    # tokens; a bounded window is both correct and the difference between
+    # "runs everywhere" and "crashes on a real box" (verified live: 128k
+    # default failed to allocate ~7GB for a 3B model, 4096 works).
+    num_ctx: int = 4096
     fallback: RuleBasedNarrator = field(default_factory=RuleBasedNarrator)
     name: str = "ollama"
     _calls: list[LlmCallRecord] = field(default_factory=list)
@@ -147,7 +193,7 @@ class OllamaNarrator:
             + '","ranges":{"<param>":[lo,hi]},"rationale":"..."}]'
         )
         try:
-            response = self._chat(prompt)
+            response = self._chat(prompt, response_format=_propose_space_format(ctx.model_id))
         except (urllib.error.URLError, TimeoutError, OSError, ValueError):
             return self.fallback.propose_ranges(ctx)
 
@@ -172,7 +218,7 @@ class OllamaNarrator:
             'Respond ONLY with a JSON array: [{"tool":"narrate","text":"...","refs":[]}]'
         )
         try:
-            response = self._chat(prompt)
+            response = self._chat(prompt, response_format=_NARRATE_FORMAT)
         except (urllib.error.URLError, TimeoutError, OSError, ValueError):
             return self.fallback.narrate(ctx)
 
@@ -194,17 +240,27 @@ class OllamaNarrator:
         self._calls.clear()
         return drained
 
-    def _chat(self, prompt: str) -> str:
+    def _chat(self, prompt: str, *, response_format: dict[str, Any] | None = None) -> str:
         """POST to the local Ollama chat API using only the stdlib. Raises on
-        any transport/parse failure so callers fall back cleanly."""
-        payload = json.dumps(
-            {
-                "model": self.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "stream": False,
-                "options": {"temperature": self.temperature, "seed": self.seed},
-            }
-        ).encode("utf-8")
+        any transport/parse failure so callers fall back cleanly.
+        `response_format`, when given, is passed as Ollama's structured-output
+        `format` (a JSON schema the server constrains decoding to) — this is
+        what makes a small local model reliably hit the exact whitelisted
+        tool shape; `parse_tool_calls` still validates independently either
+        way and still fails closed."""
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": {
+                "temperature": self.temperature,
+                "seed": self.seed,
+                "num_ctx": self.num_ctx,
+            },
+        }
+        if response_format is not None:
+            body["format"] = response_format
+        payload = json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
             f"{self.base_url}/api/chat", data=payload, headers={"Content-Type": "application/json"}
         )
@@ -216,10 +272,17 @@ class OllamaNarrator:
         return content
 
 
-def make_narrator(*, use_llm: bool = False, model: str = "llama3.1", seed: int = 0) -> Narrator:
+def make_narrator(
+    *,
+    use_llm: bool = False,
+    model: str = "llama3.1",
+    seed: int = 0,
+    num_ctx: int = 4096,
+    timeout_s: float = 20.0,
+) -> Narrator:
     """Factory: the rule-based narrator by default; an Ollama-backed one when
     `use_llm` is set (which still falls back to rule-based if the server is
     absent). The system is fully functional either way."""
     if use_llm:
-        return OllamaNarrator(model=model, seed=seed)
+        return OllamaNarrator(model=model, seed=seed, num_ctx=num_ctx, timeout_s=timeout_s)
     return RuleBasedNarrator()

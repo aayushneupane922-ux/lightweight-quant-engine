@@ -83,13 +83,13 @@ A step-by-step, production-ready build plan for one builder driving Claude Code.
 - **Tests (property):** no intent sequence breaches limits · kill ⇒ no risk-increasing order until human clears · reconciliation halts on injected mismatch · rebuild-from-audit reproduces state.
 - **Exit gate:** risk gate + kill + recovery all enforced and tested; `git tag m5-done`.
 
-## M6 — Model catalog + adapters + intake  · L · Dep: M3, M4
-- [ ] Manifest schema + plugin discovery + intake checklist + quarantine list ([`03`](03-model-catalog.md)).
-- [ ] Library adapters: `PandasTaRuleAdapter`, `SkfolioOptimizerAdapter`, `PyPortfolioOptAdapter`, `RiskfolioAdapter`, `StatsmodelsPairsAdapter`, `ArchVolAdapter`.
-- [ ] Ship ≥10 concrete models across the 4 families; each with manifest + tests + a passing Research backtest.
-- [ ] Heavy libs (skfolio/riskfolio/lightgbm) in the `research` extra; keep runtime license gate green.
-- **Tests:** adding a model = folder passing intake · adapters produce deterministic strategies · quarantine transparent · license gate green.
-- **Exit gate:** ≥10 models listed + backtestable + gate-eligible; `git tag m6-done`.
+## M6 — Model catalog + adapters + intake  · L · Dep: M3, M4  ✅ m6-done
+- [x] Manifest schema + plugin discovery + intake checklist + quarantine list ([`03`](03-model-catalog.md)).
+- [x] Library adapters: `IndicatorRuleAdapter` (native, replaces the rejected `PandasTaRuleAdapter` — see `pyproject.toml`), `SkfolioOptimizerAdapter`, `PyPortfolioOptAdapter`, `RiskfolioAdapter`, `StatsmodelsPairsAdapter`, `ArchVolAdapter`.
+- [x] Ship ≥10 concrete models across the 4 families (trend, momentum, mean_reversion, volatility); each with manifest + tests + a passing Research backtest.
+- [x] Heavy libs (statsmodels/arch/skfolio/PyPortfolioOpt/riskfolio-lib) in the `models` extra, lazily imported; runtime license gate green.
+- **Tests:** adding a model = folder passing intake · adapters produce deterministic strategies · quarantine transparent (incl. the 5 heavy-lib adapters, which quarantine cleanly when `.[models]` isn't installed) · license gate green.
+- **Exit gate:** ✅ 11 models listed + backtestable + gate-eligible; `git tag m6-done`.
 
 ## M7 — Obsidian Desk web UI (localhost, no CLI)  · L · Dep: M4, M5, M6
 - [ ] FastAPI + NiceGUI app on `127.0.0.1`; theme layer = the design tokens ([`05`](05-ui-and-3d-visualization.md), [`archive/28`](archive/28-ui-ux-design-system.md)); ship Inter + JetBrains Mono.

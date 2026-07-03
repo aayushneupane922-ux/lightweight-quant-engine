@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import numpy.typing as npt
 
 _EULER_MASCHERONI = 0.5772156649015329
 
@@ -62,7 +63,7 @@ def norm_ppf(p: float) -> float:
     )
 
 
-def _skewness(x: np.ndarray) -> float:
+def _skewness(x: npt.NDArray[np.float64]) -> float:
     n = len(x)
     std = float(np.std(x, ddof=0))
     if std == 0 or n < 3:
@@ -70,7 +71,7 @@ def _skewness(x: np.ndarray) -> float:
     return float(np.mean(((x - np.mean(x)) / std) ** 3))
 
 
-def _kurtosis(x: np.ndarray) -> float:
+def _kurtosis(x: npt.NDArray[np.float64]) -> float:
     """Non-excess kurtosis (a normal distribution scores 3.0)."""
     n = len(x)
     std = float(np.std(x, ddof=0))
@@ -100,7 +101,7 @@ def probabilistic_sharpe_ratio(
     return norm_cdf(z)
 
 
-def deflated_sharpe_ratio(returns: np.ndarray, *, n_trials: int) -> float:
+def deflated_sharpe_ratio(returns: npt.NDArray[np.float64], *, n_trials: int) -> float:
     n_obs = len(returns)
     if n_obs < 2 or n_trials < 1:
         return 0.0

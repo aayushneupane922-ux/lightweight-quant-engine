@@ -15,9 +15,12 @@ import itertools
 import math
 
 import numpy as np
+import numpy.typing as npt
 
 
-def probability_of_backtest_overfitting(returns_matrix: np.ndarray, *, n_splits: int = 8) -> float:
+def probability_of_backtest_overfitting(
+    returns_matrix: npt.NDArray[np.float64], *, n_splits: int = 8
+) -> float:
     """`returns_matrix`: shape (T, N) — T periods, N candidate configs."""
     if returns_matrix.ndim != 2:
         raise ValueError("returns_matrix must be 2-D (periods, configs)")
@@ -51,7 +54,7 @@ def probability_of_backtest_overfitting(returns_matrix: np.ndarray, *, n_splits:
     return float(np.mean(np.array(logits) <= 0))
 
 
-def _sharpe_per_column(returns: np.ndarray) -> np.ndarray:
+def _sharpe_per_column(returns: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     std = np.std(returns, axis=0, ddof=1)
     mean = np.mean(returns, axis=0)
     with np.errstate(divide="ignore", invalid="ignore"):

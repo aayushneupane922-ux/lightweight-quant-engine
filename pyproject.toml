@@ -13,30 +13,40 @@ dependencies = [
                        # required by zoneinfo on platforms with no system
                        # tz database (Windows), needed to round-trip UTC
                        # timestamps through pyarrow/Parquet
-  "numpy",             # BSD-3 — self-contained DSR/PBO/metrics math (M4)
+  "numpy",             # BSD-3 — self-contained DSR/PBO/metrics math (M4), indicators (M6)
 ]
 
 # The rest of the docs/07 (Cost, Stack & Local LLM) stack lands milestone-by-
 # milestone as the modules that need it are built. Declared here for
 # reference/pin-planning; not imported by src/lqe until its owning milestone.
+#
+# pandas-ta (MIT) was evaluated for M6 and rejected: it hard-requires tqdm,
+# which is dual-licensed MPL-2.0/MIT with the bulk of its files under
+# MPL-2.0 — weak copyleft, not on the MIT/BSD/Apache/NCSA allowlist
+# (CLAUDE.md non-negotiable #8). Indicators are implemented natively
+# instead (models/adapters/indicator_rule_adapter.py, numpy-only, "own"
+# license per docs/03's manifest convention).
 [project.optional-dependencies]
 data = [
   "polars",            # MIT — fast dataframes, once a milestone needs vectorized transforms
   "pandas",            # BSD-3
 ]
 models = [
-  "pandas-ta",         # MIT — indicators (M3/M6)
-  "statsmodels",       # BSD-3 — pairs/cointegration (M11)
-  "arch",              # NCSA — GARCH (M11)
+  "statsmodels",       # BSD-3 — StatsmodelsPairsAdapter (M6), scaled in M11
+  "arch",              # NCSA — ArchVolAdapter (M6), scaled in M11
   "hmmlearn",          # BSD-3 — regime detection (M11)
   "ruptures",          # BSD-2 — change-point detection (M11)
-  "skfolio",           # BSD-3 — portfolio optimization (M6/M11)
-  "PyPortfolioOpt",    # MIT — portfolio optimization (M6)
-  "riskfolio-lib",     # BSD-3 — risk allocation (M6)
+  "skfolio",           # BSD-3 — SkfolioOptimizerAdapter (M6), scaled in M11
+  "PyPortfolioOpt",    # MIT — PyPortfolioOptAdapter (M6)
+  "riskfolio-lib",     # BSD-3 — RiskfolioAdapter (M6)
   "scikit-learn",      # BSD-3 — supervised signals/meta-labeling (M11)
   "lightgbm",          # MIT — gradient boosting (M11)
   "river",             # BSD-3 — online learning / drift monitor (M8)
 ]
+# The five heavy-lib structural adapters above (models/adapters/*_adapter.py)
+# lazily import their library only at construction time, so a base or `dev`
+# install never needs them; intake_check() quarantines cleanly (with the
+# ImportError as the reason) if `.[models]` isn't installed.
 search = [
   "optuna",            # MIT — hyperparameter search (M8)
 ]
@@ -86,6 +96,14 @@ ignore_missing_imports = true
 # scoped narrowly to the one module that calls into them.
 module = "lqe.storage.parquet"
 disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+# The M6 heavy-lib structural adapters (docs/03 §3.3) lazily import
+# optional "models"-extra packages that aren't installed in the base venv
+# and/or ship no type stubs. Their own modules stay strict; only the
+# missing-import noise from these specific third-party names is silenced.
+module = ["statsmodels.*", "arch.*", "pypfopt.*", "skfolio.*", "riskfolio.*", "pandas.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 addopts = "-q"

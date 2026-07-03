@@ -12,6 +12,7 @@ from typing import Literal
 from lqe.core.context import Context
 from lqe.core.events import FillEvent, MarketEvent, SignalEvent
 from lqe.core.types import Symbol
+from lqe.models.manifest import DataNeeds, ModelManifest
 
 
 def _sma(closes: list[Decimal], window: int) -> Decimal:
@@ -76,3 +77,22 @@ class TrendMaCross:
 
     def on_fill(self, ev: FillEvent, ctx: Context) -> None:
         return None
+
+
+MANIFEST = ModelManifest(
+    id="trend_ma_cross",
+    family="trend",
+    one_liner="Long on a fast/slow SMA bullish cross, flat on the bearish cross.",
+    economic_rationale=(
+        "The oldest trend signal: a faster average crossing a slower one "
+        "flags a shift in the prevailing direction."
+    ),
+    data_needs=DataNeeds(instruments=1, kind="OHLCV"),
+    oss_libs=["own"],
+    params_schema={"fast": "int>1", "slow": "int>fast"},
+    failure_modes=["whipsaws in choppy/sideways markets", "lag at trend reversals"],
+)
+
+
+def make_strategy(symbol: Symbol) -> TrendMaCross:
+    return TrendMaCross(symbol=symbol, fast=10, slow=30)

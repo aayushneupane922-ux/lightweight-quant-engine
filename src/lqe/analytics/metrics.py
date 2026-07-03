@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 
 import numpy as np
+import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict
 
 
@@ -32,7 +33,7 @@ class Metrics(BaseModel):
     tail_ratio: float
 
 
-def returns_from_equity(equity_curve: Sequence[Decimal]) -> np.ndarray:
+def returns_from_equity(equity_curve: Sequence[Decimal]) -> npt.NDArray[np.float64]:
     equity = np.array([float(e) for e in equity_curve], dtype=np.float64)
     if len(equity) < 2:
         return np.array([], dtype=np.float64)
@@ -41,13 +42,13 @@ def returns_from_equity(equity_curve: Sequence[Decimal]) -> np.ndarray:
     return np.nan_to_num(returns, nan=0.0, posinf=0.0, neginf=0.0)
 
 
-def sharpe_ratio(returns: np.ndarray, *, periods_per_year: float) -> float:
+def sharpe_ratio(returns: npt.NDArray[np.float64], *, periods_per_year: float) -> float:
     if len(returns) < 2 or np.std(returns, ddof=1) == 0:
         return 0.0
     return float(np.mean(returns) / np.std(returns, ddof=1) * np.sqrt(periods_per_year))
 
 
-def sortino_ratio(returns: np.ndarray, *, periods_per_year: float) -> float:
+def sortino_ratio(returns: npt.NDArray[np.float64], *, periods_per_year: float) -> float:
     if len(returns) < 2:
         return 0.0
     downside = returns[returns < 0]
@@ -126,7 +127,7 @@ def payoff_ratio(trade_pnls: Sequence[float]) -> float:
     return avg_win / avg_loss
 
 
-def tail_ratio(returns: np.ndarray) -> float:
+def tail_ratio(returns: npt.NDArray[np.float64]) -> float:
     if len(returns) < 20:
         return 0.0
     right = np.percentile(returns, 95)

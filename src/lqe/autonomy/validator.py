@@ -11,6 +11,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 import numpy as np
+import numpy.typing as npt
 from pydantic import BaseModel, ConfigDict
 
 from lqe.analytics.dsr import deflated_sharpe_ratio
@@ -189,9 +190,9 @@ class Validator:
         symbol: Symbol,
         strategy_factory: Callable[[], Strategy],
         starting_cash: Decimal,
-    ) -> tuple[np.ndarray, int]:
+    ) -> tuple[npt.NDArray[np.float64], int]:
         fold_size = max(1, len(bars) // self._n_folds)
-        stitched: list[np.ndarray] = []
+        stitched: list[npt.NDArray[np.float64]] = []
         n_trades = 0
         for i in range(self._n_folds):
             start = i * fold_size

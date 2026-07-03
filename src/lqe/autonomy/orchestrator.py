@@ -28,6 +28,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from lqe.analytics.metrics import returns_from_equity, sharpe_ratio
+from lqe.analytics.registry import ExperimentRegistry
 from lqe.autonomy.books import TrackedBook
 from lqe.autonomy.drift import DriftMonitor
 from lqe.autonomy.optimizer import OptunaOptimizer, SearchSpace
@@ -86,6 +87,12 @@ class Orchestrator:
     tracked_book: TrackedBook = field(default_factory=TrackedBook)
     de_risk: DeRiskController = field(default_factory=DeRiskController)
     drift_monitor: DriftMonitor = field(default_factory=DriftMonitor)
+    # Optional persistent trial provenance (docs/03 §3.6): when supplied,
+    # every trial is recorded and the honest trial count that feeds DSR/PBO
+    # is *seeded from prior campaigns*, so re-searching the same data can't
+    # smuggle a lucky winner past the deflation. Left None in tests keeps the
+    # count purely in-memory (starts at 0) and the audit chain deterministic.
+    registry: ExperimentRegistry | None = None
 
     def __post_init__(self) -> None:
         if not self.searchable_models:
@@ -95,7 +102,8 @@ class Orchestrator:
         self._clock = ManualClock(datetime.fromtimestamp(0, tz=UTC))
         self.engine = Engine(run_id=self.run_id, book=self.book, clock=self._clock)
         self._step_index = 0
-        self._n_trials_context = 0
+        # Honest catalog-wide count spans campaigns when a registry persists it.
+        self._n_trials_context = self.registry.trial_count() if self.registry is not None else 0
         cut = max(2, int(len(self.bars) * self.search_fraction))
         self._search_bars = list(self.bars[:cut])
 
@@ -184,10 +192,11 @@ class Orchestrator:
         )
         for trial in result.trials:
             self._n_trials_context += 1
+            trial_id = f"trial:{focus.model_id}:{step}:{trial.index}"
             self.engine.emit(
                 "TrialEvent",
                 TrialEvent(
-                    trial_id=f"trial:{focus.model_id}:{step}:{trial.index}",
+                    trial_id=trial_id,
                     hypo_id=hypo_id,
                     study_id=study_id,
                     params=trial.params,
@@ -196,6 +205,20 @@ class Orchestrator:
                     index=trial.index,
                 ),
             )
+            if self.registry is not None:
+                # Run-scoped PK so distinct campaigns accumulate but an
+                # identical re-run REPLACEs (no double-count of the same effort).
+                self.registry.record_trial(
+                    trial_id=f"{self.run_id}:{trial_id}",
+                    run_id=self.run_id,
+                    study_id=study_id,
+                    hypo_id=hypo_id,
+                    params=trial.params,
+                    oos_metric=trial.value,
+                    seed=result.seed,
+                    idx=trial.index,
+                    created_at=self._clock.now(),
+                )
         return study_id, result.best_params, result.best_value
 
     def _candidate(

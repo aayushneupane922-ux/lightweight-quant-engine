@@ -258,6 +258,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.set_defaults(func=_cmd_validate)
 
+    check_config_parser = subparsers.add_parser(
+        "check-config", help="Validate a config file against the paper-only lockout schema."
+    )
+    check_config_parser.add_argument("path", help="Path to a .json or .toml config file.")
+    check_config_parser.set_defaults(func=_cmd_check_config)
+
     autopilot_parser = subparsers.add_parser(
         "autopilot", help="Run the rule-based autonomy loop over a replay bundle (paper-only)."
     )
@@ -270,6 +276,12 @@ def build_parser() -> argparse.ArgumentParser:
     autopilot_parser.add_argument("--starting-cash", type=float, default=10_000.0)
     autopilot_parser.add_argument("--min-periods", type=int, default=10_000)
     autopilot_parser.add_argument("--out", default=None, help="Write the audit JSONL here.")
+    autopilot_parser.add_argument(
+        "--catalog",
+        default=None,
+        help="DuckDB catalog filename under --root for persistent trial provenance "
+        "(honest cross-campaign trial counting). Omit to count in-memory only.",
+    )
     autopilot_parser.set_defaults(func=_cmd_autopilot)
 
     desk_parser = subparsers.add_parser(
@@ -288,6 +300,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _cmd_check_config(args: argparse.Namespace) -> int:
+    from lqe.core.config import load_config
+    from lqe.core.errors import ConfigError, LockoutViolation
+
+    try:
+        config = load_config(args.path)
+    except LockoutViolation as exc:
+        print(f"LOCKOUT: {exc}")
+        return 2
+    except ConfigError as exc:
+        print(f"invalid config: {exc}")
+        return 1
+    print(
+        f"config OK — mode={config.engine.mode}, execution.adapter={config.execution.adapter}, "
+        f"data.adapter={config.data.adapter} (paper-only lockout satisfied)"
+    )
+    return 0
+
+
 def _cmd_autopilot(args: argparse.Namespace) -> int:
     # Imported lazily: the autonomy loop needs the optional `search` extra
     # (Optuna). Base/non-autopilot commands must import without it.
@@ -297,37 +328,52 @@ def _cmd_autopilot(args: argparse.Namespace) -> int:
     from lqe.autonomy.searchable import default_searchable_models
 
     root = Path(args.root)
-    _, bars = load_bundle(root, args.bundle)
+    bundle, bars = load_bundle(root, args.bundle)
     symbol_bars = [bar for bar in bars if bar.symbol == args.symbol]
     if not symbol_bars:
         print(f"no bars for symbol {args.symbol!r} in bundle {args.bundle!r}")
         return 1
 
-    orchestrator = Orchestrator(
-        validator=Validator(),
-        gate=PromotionGate(thresholds=GateThresholds(min_periods=args.min_periods)),
-        optimizer=OptunaOptimizer(),
-        searchable_models=default_searchable_models(),
-        bars=symbol_bars,
-        symbol=args.symbol,
-        starting_cash=Decimal(str(args.starting_cash)),
-        seed=args.seed,
-        n_trials=args.trials,
-    )
-    states = orchestrator.run(steps=args.steps, start=symbol_bars[-1].ts_open)
+    # A run_id that is stable per (bundle, seed, steps) campaign: re-running
+    # the identical campaign REPLACEs its trials (no double-count), while a
+    # different seed/bundle/steps accumulates honestly (docs/03 §3.6).
+    run_id = f"autopilot:{args.bundle}:{args.symbol}:seed{args.seed}:steps{args.steps}"
+    catalog_cm = Catalog(root / args.catalog) if args.catalog else None
+    registry = ExperimentRegistry(catalog_cm) if catalog_cm is not None else None
 
-    promoted = sum(1 for s in states if s.promoted)
-    tracked_count = len(orchestrator.tracked_book.entries()) if orchestrator.tracked_book else 0
-    print(f"autopilot: {args.steps} steps over {len(symbol_bars)} bars ({args.symbol})")
-    for s in states:
-        tag = " -> promoted" if s.promoted else ""
-        print(f"  step {s.step_index} {s.focus_model}: {s.verdict}{tag}")
-    print(f"promoted {promoted}/{args.steps}; tracked book has {tracked_count} models")
-    print(f"audit hash-chain verifies: {orchestrator.engine.audit.verify()}")
-    if args.out:
-        out = Path(args.out)
-        orchestrator.engine.audit.write_jsonl(out)
-        print(f"wrote audit log -> {out}")
+    try:
+        orchestrator = Orchestrator(
+            validator=Validator(),
+            gate=PromotionGate(thresholds=GateThresholds(min_periods=args.min_periods)),
+            optimizer=OptunaOptimizer(),
+            searchable_models=default_searchable_models(),
+            bars=symbol_bars,
+            symbol=args.symbol,
+            starting_cash=Decimal(str(args.starting_cash)),
+            run_id=run_id,
+            seed=args.seed,
+            n_trials=args.trials,
+            registry=registry,
+        )
+        states = orchestrator.run(steps=args.steps, start=symbol_bars[-1].ts_open)
+
+        promoted = sum(1 for s in states if s.promoted)
+        tracked_count = len(orchestrator.tracked_book.entries())
+        print(f"autopilot: {args.steps} steps over {len(symbol_bars)} bars ({args.symbol})")
+        for s in states:
+            tag = " -> promoted" if s.promoted else ""
+            print(f"  step {s.step_index} {s.focus_model}: {s.verdict}{tag}")
+        print(f"promoted {promoted}/{args.steps}; tracked book has {tracked_count} models")
+        if registry is not None:
+            print(f"trials recorded (all campaigns): {registry.trial_count()}")
+        print(f"audit hash-chain verifies: {orchestrator.engine.audit.verify()}")
+        if args.out:
+            out = Path(args.out)
+            orchestrator.engine.audit.write_jsonl(out)
+            print(f"wrote audit log -> {out}")
+    finally:
+        if catalog_cm is not None:
+            catalog_cm.close()
     return 0
 
 

@@ -2,13 +2,13 @@
 
 **Purpose:** orient a developer (human or a fresh Claude Code session) picking this up cold. Read this, then `CLAUDE.md` (constitution) + `GUARDRAILS.md` + `WORKFLOW.md`, then `docs/10-production-roadmap.md` (the milestone map, kept checked-off as work lands).
 
-## 1. Status (v2.0 shipped)
+## 1. Status (v2.0 shipped; v3.0 in progress — M18/5 done)
 
-A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 (v1.0) are complete**, and **M13 through M17 (v2.0, `docs/12-v2-roadmap.md`) are also complete, verified, committed, and tagged.** v2.0's scope was chosen explicitly by the owner on 2026-07-03 (v1.0's roadmap had nothing left): productionize the live multi-model fleet, complete the model catalog, and give the LLM/heavy-model path real CI coverage. See §1a.
+A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 (v1.0)** and **M13 through M17 (v2.0, `docs/12-v2-roadmap.md`)** are complete, verified, committed, and tagged. **v3.0 (`docs/13-v3-roadmap.md`, M18–M22) is in progress: M18 is done and tagged; M19–M22 are not started.** v4.0 (`docs/14-v4-catalog-expansion.md`, M23–M26) is scoped but not started at all. See §1a/§1c.
 
-- **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, then `m13-done` … `m17-done`, `v2.0`.
-- **Health:** full suite green, ruff clean, `mypy --strict` clean (`src` + `scripts`), license gate PASS (50 runtime deps), git tree clean. Exact counts move milestone to milestone — see `docs/12-v2-roadmap.md`'s per-milestone exit-gate notes for the count at each tag.
-- **Release evidence:** `M12-RELEASE-REVIEW.md` (v1.0's §19.1 safety + honesty checklist) and `V2-RELEASE-REVIEW.md` (the same review re-run against everything M13–M16 added). `docs/12-v2-roadmap.md` also carries per-milestone evidence inline (checked-off tasks + Tests + Exit gate lines). Runtime guide: `USER-GUIDE.md`. Deep-dive on every component: **`COMPONENT-GUIDE.md`** (§11 covers the live-fleet extension in detail, including the v2.0 CLI/persistence work).
+- **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, `m13-done` … `m17-done`, `v2.0`, then `m18-done`.
+- **Health:** full suite green (336 passed, 8 correctly skipped as of `m18-done`), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`), license gate PASS (50 runtime deps), git tree clean.
+- **Release evidence:** `M12-RELEASE-REVIEW.md` (v1.0) and `V2-RELEASE-REVIEW.md` (v2.0, M13–M16) — both full §19.1 safety/honesty reviews with evidence. v3.0 doesn't have its own review yet — that's M22's job, not done until v3.0 tags. Runtime guide: `USER-GUIDE.md` (not yet updated for v3/M18 — that's also M22's job per `docs/13`'s own plan). Deep-dive on every component: **`COMPONENT-GUIDE.md`** (also not yet updated for M18 — same reason).
 - **Branch:** `master`. Every milestone = one commit + a `mN-done` tag. Git identity is a local placeholder (set per-repo, flagged to the owner).
 
 ### 1a. v2.0: what shipped (docs/12-v2-roadmap.md)
@@ -21,14 +21,30 @@ A **local, paper-only, autonomous quant-research simulator** — built milestone
 - **M16 — real-Ollama integration test + a second CI lane.** `tests/integration/test_ollama_narrator_live.py` talks to a genuine local Ollama server, gated by an actual reachability probe (auto-skips when absent, auto-runs when present — verified both states live this session). New `models-extra` CI job installs `.[ui,search,dev,models]` and runs the full suite, kept strictly separate from `check` (which still needs `.[models]` absent to prove the quarantine path).
 - **M17 — docs updated for v2.0** (this file, `README.md`, `USER-GUIDE.md`, `COMPONENT-GUIDE.md`), and a final full-suite/lint/type/license verification before tagging `v2.0`.
 
-**No roadmap exists past v2.0 either.** The next session should ask the owner what comes next rather than inventing more milestones — same situation as after v1.0, resolved the same way (ask, then write a scoped roadmap doc together before starting work).
+**A roadmap now exists past v2.0** (see §1c) — the "ask the owner" note above is historical (it was true when written, resolved since).
+
+### 1c. v3.0 in progress (docs/13-v3-roadmap.md, M18–M22)
+
+The owner sent `DEVELOPER-HANDOFF.md` (a standalone, non-agent-jargon briefing of the whole project) to their developer and asked for an upgrade roadmap. The developer sent back two documents, both adopted verbatim (with v4's milestones renumbered to continue this repo's tag sequence): `docs/13-v3-roadmap.md` (M18–M22 — launch/UX/blotter/engine-room-conversation) and `docs/14-v4-catalog-expansion.md` (M23–M26 — measured catalog diversification). Commit `df450ad`.
+
+**M18 (zero-CLI one-click launch) is done, tagged `m18-done` (`936254f`):**
+- `run.py` rewritten as a real one-click launcher: builds kill switch/control plane/desk data/job manager, serves immediately, runs first-run setup (auto-ingest a small offline synthetic demo dataset if `data/catalog.duckdb` doesn't exist) in the background, opens the browser once ready.
+- New `LaunchState` + a FastAPI middleware (`ui/app.py`) serve `onboarding.html` for every route until setup finishes — plain-language status, never raw stdout/a stack trace.
+- New `src/lqe/ops/jobs.py` (`JobManager`): runs ingest/backtest/live start-stop in background threads via the *same already-tested* functions the CLI uses (`data.ingest.ingest`, `backtest.runner.run_backtest`, the newly-extracted `live.session.LiveSession`) — no new order-construction path. New `/api/jobs*` routes (a second write surface, clearly labeled apart from `/api/control`) + a Live Control panel on Floor + a Quick Backtest panel on Research.
+- New `src/lqe/live/session.py` (`LiveSession`): extracted `cli._cmd_live`'s session logic so the CLI and `JobManager` share one implementation. Re-verified byte-for-byte unchanged against pre-extraction behavior (all of M14/M15's `lqe live` tests, including the byte-identical-resume test, still pass).
+- Verified live against a real running server (not just tests): first-run auto-ingest completed, Floor rendered the control panel, a real HTTP call started all 51 models trading, stop cleanly halted it.
+- 27 new tests. Full detail + exact file/test citations: `docs/13-v3-roadmap.md`'s M18 section.
+
+**M19–M22 not started.** Before starting M19 (institutional UI/UX polish), there's a real, undecided dependency call flagged in `docs/13` itself: whether to vendor **TradingView Lightweight Charts** (Apache-2.0, license-gate-clean) for candlestick/streaming charts, or keep the existing hand-rolled `<canvas>` approach used for the 3D neural-web. This was surfaced to the owner at the end of the M18 session but not yet answered — **ask before starting M19**, don't assume either way.
+
+**v4 (`docs/14-v4-catalog-expansion.md`, M23–M26) is fully scoped but zero work has started.** It depends on nothing in v3, so it could in principle be worked in parallel/before v3 finishes if the owner wants — not assumed, ask.
 
 ### 1b. This machine's local environment state (not portable, not committed)
 
 - **Ollama**: installed at `%LOCALAPPDATA%\Programs\Ollama\ollama.exe`. Not running as a persistent background service on this machine as of the end of this session — start it manually (`ollama serve`, or the `ollama app.exe` tray app) before using `--llm`/the `llm_integration`-marked tests. Model pulled: `llama3.2:3b` (~2GB).
 - **models extra: fully installed** (post-M13) — `statsmodels`, `arch`, `hmmlearn`, `ruptures`, `scikit-learn`, `lightgbm`, `skfolio`, `PyPortfolioOpt`, `riskfolio-lib` are all in `.venv`. `lqe catalog` shows 51/51 admitted, 0 quarantined, on this machine. `LongPathsEnabled=1` is now set in the Windows registry (a system-wide setting, not repo-local — a fresh machine needs this step repeated per `USER-GUIDE.md` §1 before the full `.[models]` install will succeed).
-- **No servers running**: any preview servers from this session were stopped before the session ended (check for stray `python.exe`/`ollama.exe` processes if resuming immediately).
-- **Demo artifacts**: `data/`, `runs/`, `.claude/launch.json` (has `desk` and `live-fleet` preview configs — the latter now points at `lqe live` via `-m lqe.cli live ...`) are local/untracked convenience state, not part of the shipped product.
+- **No servers running**: confirmed clean at the end of this session (`Get-Process python*,ollama*` empty).
+- **Demo artifacts**: `data/`, `runs/`, `.claude/launch.json` (has `desk`, `live-fleet`, and now a `launcher` preview config pointing at the rewritten `run.py`) are local/untracked convenience state, not part of the shipped product. Note: the `preview_start` tool's config-name cache didn't pick up the new `launcher` entry mid-session (had to verify M18 manually via a background `python run.py` process + curl instead) — if that recurs, the same manual-verification approach works fine.
 
 ### Verify everything in one shot (Windows, from repo root)
 ```
@@ -59,6 +75,7 @@ CI (`.github/workflows/ci.yml`) now has **two jobs**: `check` (installs `.[ui,se
 - **M15** — `lqe live --out <path>` persistence + auto-resume via deterministic replay; `LiveFeed.resume_from`.
 - **M16** — real-Ollama marker-gated integration test (`tests/integration/test_ollama_narrator_live.py`) + a second CI job (`models-extra`) installing the full `models` extra.
 - **M17** — docs updated for v2.0 (this file, `README.md`, `USER-GUIDE.md`, `COMPONENT-GUIDE.md`); §19.1 safety/honesty review re-run against M13–M16; full suite/lint/type/license verified green. Tagged `v2.0`.
+- **M18** — zero-CLI one-click launch: `run.py` rewritten (one-click launcher + first-run auto-ingest), `ops/jobs.JobManager` (GUI-triggered ingest/backtest/live start-stop), `live/session.LiveSession` (extracted from `cli._cmd_live`, shared by CLI + JobManager), onboarding screen (`LaunchState` + middleware), Live Control panel (Floor) + Quick Backtest panel (Research). Docs (`USER-GUIDE`/`COMPONENT-GUIDE`) intentionally not yet updated for this — that's M22's job per `docs/13`'s own plan, not an oversight.
 
 ## 3. Key deviations from the named spec (all deliberate + flagged)
 
@@ -87,28 +104,30 @@ Run `docs/archive/19` §19.1 safety review after any milestone or any change tou
 
 ## 5. What's left
 
-`docs/10` (v1.0, M0–M12) and `docs/12-v2-roadmap.md` (v2.0, M13–M17) are
-fully done and tagged. The owner sent `DEVELOPER-HANDOFF.md` to their
-developer and asked for an upgrade roadmap; the developer proposed two,
-now adopted and in progress:
+**Immediate next step: M19 (institutional UI/UX polish, `docs/13-v3-roadmap.md`).**
+Before starting it, ask the owner the TradingView Lightweight Charts
+vendoring question flagged in §1c — it was surfaced, not yet answered, at
+the end of the M18 session. Don't assume either direction.
 
-- **`docs/13-v3-roadmap.md` (v3.0, M18–M22)** — zero-CLI one-click launch,
-  institutional UI/UX polish, a live trade blotter, and a plain-language
-  "engine room" conversation feed (watch the LLM/Optuna/Validator/Autopilot
-  talk). All additive UX/visibility — none of it touches the 9 safety
-  non-negotiables.
-- **`docs/14-v4-catalog-expansion.md` (v4.0, M23–M26)** — ~50 more models,
-  organized by return-driver "sleeve" rather than headcount, with a
-  correlation-curation intake step and a trial-count update to the
-  promotion gate so the bigger catalog doesn't manufacture false
-  positives.
+After M19: **M20 (live trade blotter)** and **M21 (engine-room conversation
+feed)** — both depend on M19's design system, not on each other, so either
+order works. Then **M22 (v3 hardening + release: safety/honesty re-review,
+`V3-RELEASE-REVIEW.md`, docs updated for real this time, tag `v3.0`)**.
+
+After v3.0 (or in parallel, if the owner prefers — see §1c): **v4
+(`docs/14-v4-catalog-expansion.md`, M23–M26)** — measured catalog
+diversification by return-driver sleeve, not headcount; a correlation-
+curation intake step; a trial-count update to the promotion gate so the
+bigger catalog doesn't manufacture false positives. Zero work started on
+this yet.
 
 Check `git tag -l` for the latest `mN-done` to see how far execution has
 gotten past this file's own last edit — this section is not guaranteed to
-be updated every milestone the way the two roadmap docs are.
+be updated every milestone the way the roadmap docs (`docs/13`, `docs/14`)
+are, which carry per-milestone evidence inline as work lands.
 
-Some things v2.0 itself surfaced but deliberately left out of scope (v3/v4
-above don't address these either — flag for a future v5 if still wanted):
+Some things v2.0 itself surfaced but deliberately left out of scope (not
+addressed by v3 or v4 either — flag for a future v5 if still wanted):
 
 - The orchestrator's own autonomy/promotion history is not reconstructed on
   an `lqe live --out` resume (M15's documented limitation) — only the trading
@@ -121,12 +140,6 @@ above don't address these either — flag for a future v5 if still wanted):
   someone toggles the kill-switch file between a crash and a resume, replay
   uses the *current* state, which could (only in that edge case) diverge from
   what was originally decided in that exact window (M15 risk register).
-
-**Next session: ask the owner what comes after v2.0** rather than inventing
-M18+. The pattern that worked for v2.0 (owner scopes 2–3 areas via
-AskUserQuestion, agree on same-discipline-as-v1.0, write a
-`docs/13-vN-roadmap.md`, execute milestone by milestone) is worth repeating
-rather than reinventing.
 
 **None of the above may weaken a lockout, the gate, or the honesty rails.**
 

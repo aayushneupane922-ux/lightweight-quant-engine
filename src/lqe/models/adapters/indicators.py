@@ -55,8 +55,11 @@ def rsi(values: npt.NDArray[np.float64], window: int) -> npt.NDArray[np.float64]
     gains = np.where(deltas > 0, deltas, 0.0)
     losses = np.where(deltas < 0, -deltas, 0.0)
 
-    avg_gain = np.mean(gains[:window])
-    avg_loss = np.mean(losses[:window])
+    # float(): np.mean returns np.floating; the running-average recurrence and
+    # _rsi_from_averages both work in plain Python floats (newer numpy stubs
+    # no longer treat np.floating as a float).
+    avg_gain = float(np.mean(gains[:window]))
+    avg_loss = float(np.mean(losses[:window]))
     out[window] = _rsi_from_averages(avg_gain, avg_loss)
 
     for i in range(window, len(deltas)):

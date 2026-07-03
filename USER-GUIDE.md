@@ -27,6 +27,18 @@ Extras are opt-in and layered:
   ruptures/skfolio/…). *Optional by design*: without it those catalog models
   quarantine transparently rather than crash.
 
+  The statistical/ML subset installs on any platform:
+  ```
+  pip install statsmodels arch hmmlearn ruptures scikit-learn lightgbm
+  ```
+  This lights up the pairs / regime / supervised / GARCH-vol adapters (catalog
+  admits ~48/51). The three cvxpy-based portfolio optimizers (PyPortfolioOpt /
+  skfolio / riskfolio-lib) pull a large interactive-viz chain (jupyter-widgets /
+  vectorbt); on **Windows** that install trips the 260-char path limit unless
+  you enable long-path support first (`Computer\HKLM\SYSTEM\CurrentControlSet\
+  Control\FileSystem\LongPathsEnabled = 1`, admin + reboot). Until then those 3
+  models stay transparently quarantined — which is honest, not broken.
+
 ## 2. Health check first
 
 ```

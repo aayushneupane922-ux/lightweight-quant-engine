@@ -14,6 +14,11 @@ lqe doctor          # read-only health check (lockout, config, catalog, license 
 python run.py       # serve the Obsidian Desk on 127.0.0.1 (paper-only)
 ```
 
+On Windows, double-click **`run.bat`** instead of `run.py` for a real
+zero-terminal launch — it calls this project's `.venv` explicitly, so it
+doesn't depend on whatever Python happens to be file-associated on the
+machine.
+
 The sections below are the original **planning package** the engine was built from — kept for provenance.
 
 ## Operating files (the agent's rails — start here)

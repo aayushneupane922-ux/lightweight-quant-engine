@@ -138,8 +138,15 @@ for anyone with muscle memory from before v2.0.
 
 ## 6. The Obsidian Desk UI
 
+**Windows, zero-CLI:** double-click **`run.bat`** in the project folder. It
+calls this project's own `.venv` explicitly, so it works even if you never
+open a terminal. (Double-clicking `run.py` directly instead relies on
+whatever Python is file-associated on your machine — often the wrong one —
+and will fail silently with a console window that opens and closes
+instantly. Use `run.bat`.)
+
 ```
-python run.py                 # serve + open a browser tab
+python run.py                 # serve + open a browser tab (venv must be active)
 python run.py --window        # native desktop window (needs `pip install pywebview`)
 python run.py --audit runs/audit.jsonl --kill-switch runs/kill.json
 ```

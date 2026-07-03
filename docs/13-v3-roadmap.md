@@ -36,7 +36,16 @@ ever.
   `--window`) once ready. A full desktop-installer/bundled-deps path
   (PyTauri) was judged out of scope for this milestone — `run.py` still
   requires a working `.venv`, same as `lqe doctor`/M12's launcher; noted as
-  a real gap below, not silently assumed done.
+  a real gap below, not silently assumed done. **Post-M18 fix:** real-world
+  double-clicking `run.py` on Windows silently failed (Windows hands `.py`
+  files to whatever Python is file-associated, usually a bare system
+  install without this project's deps, so it crashed on the first import
+  and the console closed itself instantly) -- added `run.bat` as the actual
+  Windows double-click target, calling `.venv\Scripts\python.exe` explicitly
+  and pausing on error/missing-venv so the window never vanishes silently.
+  `run.py` unchanged; `run.bat` is a thin wrapper. Verified live via
+  `Start-Process .\run.bat` (the double-click equivalent) -> server reached
+  `ready: true`.
 - [x] **Friendly onboarding/status screen**: new `LaunchState` (`ops/jobs.py`)
   + a FastAPI middleware in `ui/app.py` that serves `onboarding.html`
   (plain-language message, auto-polling `/api/launch-status`, no raw

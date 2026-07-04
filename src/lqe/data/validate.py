@@ -13,7 +13,7 @@ from statistics import mean, pstdev
 
 from pydantic import BaseModel, ConfigDict
 
-from lqe.core.events import MarketEvent
+from lqe.core.events import FundingRateEvent, MarketEvent
 
 TIMEFRAME_DELTAS: dict[str, timedelta] = {
     "1m": timedelta(minutes=1),
@@ -149,4 +149,69 @@ def validate_bars(
         zero_volume_count=zero_volume_count,
         gaps=gaps,
         outliers=outliers,
+    )
+
+
+# docs/14 §5 (v4, sleeve F): "validated like all data" -- funding-rate
+# history gets its own report rather than overloading `ValidationReport`,
+# since it has none of OHLCV's fields (no open/high/low/close/volume) and a
+# different plausibility bound (a rate, not a price).
+_IMPLAUSIBLE_RATE = 0.10  # 10%/interval: no real exchange allows this: bad data
+_NOTABLE_RATE = 0.02  # 2%/interval: real but rare (most caps sit near ~0.75%): flag, don't fail
+
+
+class FundingValidationReport(BaseModel):
+    model_config = _FROZEN
+
+    total_rates: int
+    duplicate_timestamps: list[str] = []
+    out_of_order: bool = False
+    implausible_rates: list[Violation] = []
+    notable_rates: list[Violation] = []
+
+    @property
+    def passed(self) -> bool:
+        """Hard failures only -- mirrors `ValidationReport.passed`: a
+        notable-but-plausible rate is annotated, not blocking."""
+        return not (self.duplicate_timestamps or self.out_of_order or self.implausible_rates)
+
+
+def validate_funding_rates(rates: Sequence[FundingRateEvent]) -> FundingValidationReport:
+    if not rates:
+        return FundingValidationReport(total_rates=0)
+
+    ordered = sorted(rates, key=lambda r: r.ts)
+    out_of_order = [r.ts for r in rates] != [r.ts for r in ordered]
+
+    counts: dict[datetime, int] = {}
+    for rate in ordered:
+        counts[rate.ts] = counts.get(rate.ts, 0) + 1
+    duplicate_timestamps = [ts.isoformat() for ts, count in counts.items() if count > 1]
+
+    implausible_rates: list[Violation] = []
+    notable_rates: list[Violation] = []
+    for rate in ordered:
+        if abs(rate.rate) > _IMPLAUSIBLE_RATE:
+            implausible_rates.append(
+                Violation(
+                    ts_open=rate.ts.isoformat(),
+                    reason=(
+                        f"rate {rate.rate:.4f} exceeds the {_IMPLAUSIBLE_RATE:.0%} plausible bound"
+                    ),
+                )
+            )
+        elif abs(rate.rate) > _NOTABLE_RATE:
+            notable_rates.append(
+                Violation(
+                    ts_open=rate.ts.isoformat(),
+                    reason=f"rate {rate.rate:.4f} exceeds the {_NOTABLE_RATE:.0%} notable bound",
+                )
+            )
+
+    return FundingValidationReport(
+        total_rates=len(rates),
+        duplicate_timestamps=duplicate_timestamps,
+        out_of_order=out_of_order,
+        implausible_rates=implausible_rates,
+        notable_rates=notable_rates,
     )

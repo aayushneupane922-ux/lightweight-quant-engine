@@ -39,6 +39,21 @@ class MarketEvent(EventPayload):
     source_version: str
 
 
+class FundingRateEvent(EventPayload):
+    """A perpetual-swap funding-rate settlement (docs/14 v4 sleeve F).
+    `rate` is a fraction of notional per funding interval (e.g. `0.0001` ==
+    1bp), not a monetary value -- `float`, not `Decimal` (docs/11 §11.0's
+    Decimal rule targets money/accounting values in the decision path).
+    Distinct from `MarketEvent`: it settles periodically (typically every
+    8h on most exchanges), not once per timeframe bar."""
+
+    exchange: str
+    symbol: Symbol
+    ts: datetime
+    rate: float
+    source_version: str
+
+
 class SignalEvent(EventPayload):
     strategy: str
     symbol: Symbol

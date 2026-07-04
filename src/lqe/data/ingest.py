@@ -17,9 +17,16 @@ from pydantic import BaseModel, ConfigDict
 from lqe.core.errors import DataQualityError
 from lqe.core.types import Symbol, Timeframe
 from lqe.data.base import MarketDataAdapter
-from lqe.data.validate import ValidationReport, validate_bars
+from lqe.data.funding_adapter import CcxtFundingRateAdapter
+from lqe.data.validate import (
+    FundingValidationReport,
+    ValidationReport,
+    validate_bars,
+    validate_funding_rates,
+)
 from lqe.storage.catalog import Catalog
 from lqe.storage.parquet import write_bars
+from lqe.storage.parquet_funding import write_funding_rates
 
 
 class IngestResult(BaseModel):
@@ -80,6 +87,71 @@ def ingest(
     return IngestResult(
         version_id=version_id,
         rows=len(bars),
+        checksum=checksum,
+        report=report,
+        paths=[str(p) for p in paths],
+    )
+
+
+# docs/14 §5 (v4, sleeve F): "validated like all data" -- funding-rate
+# ingest mirrors `ingest()`'s fetch -> validate -> curated Parquet -> catalog
+# version pipeline exactly, quarantining on failure rather than silently
+# curating bad data. Reuses `Catalog.data_versions` (no schema migration):
+# `timeframe="funding"` is the sentinel that distinguishes a funding-rate
+# ingest from an OHLCV one in that same provenance table.
+FUNDING_TIMEFRAME_SENTINEL = "funding"
+
+
+class IngestFundingResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    version_id: str
+    rows: int
+    checksum: str
+    report: FundingValidationReport
+    paths: list[str]
+
+
+def ingest_funding_rates(
+    adapter: CcxtFundingRateAdapter,
+    *,
+    exchange: str,
+    symbol: Symbol,
+    root: Path,
+    catalog: Catalog,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> IngestFundingResult:
+    rates = list(adapter.stream(symbol, start=start, end=end))
+    report = validate_funding_rates(rates)
+
+    if not report.passed:
+        quarantine_dir = root / "quarantine" / exchange / symbol / FUNDING_TIMEFRAME_SENTINEL
+        quarantine_dir.mkdir(parents=True, exist_ok=True)
+        report_path = quarantine_dir / f"{uuid4()}.json"
+        report_path.write_text(report.model_dump_json(indent=2))
+        raise DataQualityError(
+            f"funding-rate validation failed for {exchange}/{symbol}: see {report_path}"
+        )
+
+    paths = write_funding_rates(root / "curated" / "funding", rates)
+    checksum = _checksum(paths)
+    version_id = str(uuid4())
+    catalog.record_data_version(
+        version_id=version_id,
+        exchange=exchange,
+        symbol=symbol,
+        timeframe=FUNDING_TIMEFRAME_SENTINEL,
+        path=str(paths[0].parent) if paths else "",
+        rows=len(rates),
+        checksum=checksum,
+        fetched_at=datetime.now(UTC),
+        validated=True,
+        report=report.model_dump(),
+    )
+    return IngestFundingResult(
+        version_id=version_id,
+        rows=len(rates),
         checksum=checksum,
         report=report,
         paths=[str(p) for p in paths],

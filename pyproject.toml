@@ -106,8 +106,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # pyarrow's parquet read/write entrypoints aren't fully annotated;
-# scoped narrowly to the one module that calls into them.
-module = "lqe.storage.parquet"
+# scoped narrowly to the modules that call into them.
+module = ["lqe.storage.parquet", "lqe.storage.parquet_funding"]
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]

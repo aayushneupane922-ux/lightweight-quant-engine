@@ -36,7 +36,10 @@ _FROZEN = ConfigDict(frozen=True)
 class DataNeeds(BaseModel):
     model_config = _FROZEN
     instruments: int = 1
-    kind: Literal["OHLCV"] = "OHLCV"
+    # "OHLCV+FUNDING" (docs/14 v4 sleeve F): needs perp funding-rate history
+    # alongside spot/perp OHLCV -- a genuinely different data prerequisite
+    # from every other sleeve, which reads OHLCV only.
+    kind: Literal["OHLCV", "OHLCV+FUNDING"] = "OHLCV"
     min_history: str = ""
 
 

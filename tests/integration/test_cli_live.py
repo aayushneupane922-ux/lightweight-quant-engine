@@ -12,6 +12,7 @@ by "closed relative to now" using the real clock by default -- a fixed
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -82,7 +83,12 @@ def test_lqe_live_runs_bounded_against_a_csv_fixture(
     out = capsys.readouterr().out
 
     assert exit_code == 0
-    assert "fleet: 51/51 models admitted" in out
+    # the exact catalog size grows as new sleeves land (docs/14 v4 M23+) --
+    # assert the *shape* (N/N, i.e. nothing quarantined on this machine,
+    # since the full 'models' extra is installed), not a hardcoded N.
+    match = re.search(r"fleet: (\d+)/(\d+) models admitted", out)
+    assert match is not None, out
+    assert match.group(1) == match.group(2)
     # exact count can be 1-2 off real wall-clock skew between fixture
     # generation and the CLI's own now() check -- assert the shape, not
     # an exact count.

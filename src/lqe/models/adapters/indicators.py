@@ -131,6 +131,26 @@ def _wilder_smooth(values: npt.NDArray[np.float64], window: int) -> npt.NDArray[
     return out
 
 
+def atr(
+    high: npt.NDArray[np.float64], low: npt.NDArray[np.float64],
+    close: npt.NDArray[np.float64], window: int = 14,
+) -> npt.NDArray[np.float64]:
+    """Average True Range (Wilder's smoothing) -- the volatility unit
+    Keltner channels scale by, in place of Bollinger's rolling std."""
+    n = len(close)
+    if n < window + 1:
+        return np.full(n, np.nan)
+    prev_close = close[:-1]
+    tr = np.maximum(
+        high[1:] - low[1:],
+        np.maximum(np.abs(high[1:] - prev_close), np.abs(low[1:] - prev_close)),
+    )
+    smoothed = _wilder_smooth(tr, window)
+    out = np.full(n, np.nan)
+    out[1:] = smoothed
+    return out
+
+
 def adx(
     high: npt.NDArray[np.float64],
     low: npt.NDArray[np.float64],

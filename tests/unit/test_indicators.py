@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from lqe.models.adapters.indicators import adx, bollinger, donchian, ema, macd, rsi, sma
+from lqe.models.adapters.indicators import adx, atr, bollinger, donchian, ema, macd, rsi, sma
 
 
 def test_sma_matches_hand_computation() -> None:
@@ -91,3 +91,20 @@ def test_adx_is_higher_for_a_strong_trend_than_a_choppy_series() -> None:
 
     assert trend_adx[-1] > choppy_adx[-1]
     assert trend_adx[-1] > 50  # a clean linear trend should read as strongly trending
+
+
+def test_atr_is_higher_for_a_wider_true_range_series() -> None:
+    n = 40
+    calm_close = np.full(n, 100.0)
+    wide_close = np.full(n, 100.0)
+
+    calm_atr = atr(calm_close + 0.5, calm_close - 0.5, calm_close, window=14)
+    wide_atr = atr(wide_close + 5.0, wide_close - 5.0, wide_close, window=14)
+
+    assert wide_atr[-1] > calm_atr[-1]
+
+
+def test_atr_is_nan_before_enough_bars() -> None:
+    closes = np.array([100.0, 101.0, 102.0])
+    result = atr(closes + 1, closes - 1, closes, window=14)
+    assert np.all(np.isnan(result))

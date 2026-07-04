@@ -132,6 +132,53 @@ construction.
   `test_trial_count_spans_multiple_models`; nothing to change. 20 new
   tests (`test_diversification.py` ×13, `test_curation.py` ×7) plus 3 more
   pinning the sleeve-tagging invariant on both catalogs.
+  — **Second pass: 28 new native-indicator presets + 2 native allocators,
+  added as new models on the existing spot-data catalog** (still no new
+  data prerequisite). `IndicatorRuleAdapter`'s presets gained a
+  `timestamps` parameter (every existing preset updated to accept and
+  ignore it) so calendar-driven presets could share the one adapter
+  instead of forking a second one. New presets: `keltner_reversion` +
+  `ou_fairvalue` (sleeve B, an ATR-channel fade and an EMA fair-value
+  fade — genuinely different formulations from the existing
+  `zscore_reversion`/`bollinger_fade`, not renames), `vol_mean_reversion`
+  (sleeve E, fades a vol *spike* — the opposite bet from `vol_breakout`,
+  which rides an expansion) + `vol_regime_gate` (sleeve I, a pure calm/
+  turbulent regime switch, no directional view), `opening_range_breakout`
+  + `support_resistance_range` + `squeeze_breakout` (**sleeve G,
+  breakout/structure — previously unrepresented in the catalog**),
+  `time_of_day` + `day_of_week` + `turn_of_month` (**sleeve H,
+  seasonality/calendar — also previously unrepresented**, and the only
+  presets that read `timestamps` instead of price). Plus 2 new native
+  allocators (sleeve M) needing no heavy lib at all:
+  `alloc_inverse_vol` and `alloc_min_variance` (the closed-form
+  unconstrained global-minimum-variance portfolio, `w = Σ⁻¹1 / (1'Σ⁻¹1)`),
+  reusing the existing `StaticWeightProjectionAdapter` plumbing built for
+  the cvxpy-based optimizers. New `indicators.atr` (Wilder's ATR, needed
+  for the Keltner channel). **Measured result**: the scaled catalog grew
+  from 51 to **81 models**; the sleeve distribution went from 8 sleeves
+  (trend_momentum >50% dominant) to **10 sleeves, dominant sleeve down to
+  33.3%** — meeting §7's "≥8-10 low-correlation sleeves" count target,
+  though "no sleeve dominating" is a correlation claim that still needs
+  the exit gate's real backtested-returns computation (M23 isn't tagged
+  yet — see below). 24 new/updated tests (`test_new_sleeve_presets.py`
+  ×24 covering every new preset's actual claimed behavior, not just
+  construction; `test_indicators.py` +2 for `atr`). Two pre-existing tests
+  had a hardcoded `51` that needed updating once the catalog grew
+  (`test_catalog_scale.py`, `test_cli_live.py` — the latter now asserts
+  the N/N *shape* instead of a hardcoded N, so it won't go stale again).
+  **Still not done, deliberately deferred, and explicitly flagged rather
+  than forced**: true cross-sectional (sleeve C) and stat-arb beyond
+  simple pairs (sleeve D: Johansen basket, lead-lag, index/basket arb).
+  Discovered while implementing that the engine's `Strategy.on_market`
+  dispatch and `Context` are single-symbol by design (`Context` carries
+  one `symbol`); the existing portfolio-allocator adapters only work
+  around this with a one-shot *static* pre-baked universe snapshot
+  (`StaticWeightProjectionAdapter`), not a live per-bar multi-symbol view.
+  A genuine cross-sectional ranking strategy (rotate into the top/bottom
+  of a *live-evolving* universe each bar) needs real new plumbing — a
+  multi-symbol-aware strategy wrapper or context extension — which is a
+  bigger design decision than "add a preset" and deserves its own
+  explicit go-ahead before building, not a rushed bolt-on.
 - **M24 · Perp/funding adapter + carry/basis sleeve (F).** The
   crown-jewel diversifiers. New funding data adapter (validated like all
   data), then the 4 carry/basis strategies. Exit gate: carry/basis models

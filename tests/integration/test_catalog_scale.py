@@ -69,7 +69,7 @@ def test_every_admitted_model_is_unproven_until_gated() -> None:
 @pytest.mark.skipif(
     _all_present,
     reason="full 'models' extra installed; nothing quarantines here — see "
-    "test_all_51_models_admit_once_the_full_models_extra_is_installed",
+    "test_all_models_admit_once_the_full_models_extra_is_installed",
 )
 def test_heavy_lib_models_quarantine_transparently_when_absent() -> None:
     catalog, _ = build_scaled_catalog(SYMBOL)
@@ -85,10 +85,12 @@ def test_heavy_lib_models_quarantine_transparently_when_absent() -> None:
     not _all_present,
     reason="requires the full 'models' extra (docs/10 M13) to be installed",
 )
-def test_all_51_models_admit_once_the_full_models_extra_is_installed() -> None:
+def test_all_models_admit_once_the_full_models_extra_is_installed() -> None:
+    # 81 as of docs/14 (v4) M23's in-progress sleeve additions (was 51 at
+    # v3.0) -- bump this again when M24's carry/basis sleeve lands.
     catalog, _ = build_scaled_catalog(SYMBOL)
     assert not catalog.quarantined()
-    assert len(catalog.all()) == 51
+    assert len(catalog.all()) == 81
 
 
 def test_the_deliberately_weak_control_is_present() -> None:

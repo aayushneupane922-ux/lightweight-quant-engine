@@ -16,10 +16,13 @@ counting spans this whole surface (M8's registry, F2).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+import numpy as np
+
 from lqe.core.types import Symbol
+from lqe.models.adapters._portfolio_projection import StaticWeightProjectionAdapter, WeightFn
 from lqe.models.adapters.arch_vol_adapter import ArchVolAdapter
 from lqe.models.adapters.changepoint_adapter import ChangePointAdapter
 from lqe.models.adapters.hmm_regime_adapter import HmmRegimeAdapter
@@ -57,6 +60,39 @@ _PRESET_META: dict[str, tuple[Family, Sleeve, str]] = {
     ),
     "rsi_fade": ("mean_reversion", "mean_reversion", "Long once RSI is oversold."),
     "vol_breakout": ("volatility", "volatility", "Long once realized vol expands past baseline."),
+    # docs/14 (v4) M23: sleeve additions on existing spot data -- no new
+    # data prerequisite, per docs/14 §5's "no new data" sleeve list.
+    "keltner_reversion": (
+        "mean_reversion", "mean_reversion", "Long on an ATR-channel dip, flat at the midline."
+    ),
+    "ou_fairvalue": (
+        "mean_reversion", "mean_reversion",
+        "Long on a deep EMA fair-value deviation, flat once it reverts.",
+    ),
+    "vol_mean_reversion": (
+        "volatility", "volatility", "Long on a vol spike, flat once it normalizes."
+    ),
+    "vol_regime_gate": (
+        "regime", "regime_overlay", "Long in a calm-vol regime, flat once it turns turbulent."
+    ),
+    "opening_range_breakout": (
+        "trend", "breakout_structure", "Long on a break above today's opening range."
+    ),
+    "support_resistance_range": (
+        "mean_reversion", "breakout_structure", "Long near range support, flat near resistance."
+    ),
+    "squeeze_breakout": (
+        "trend", "breakout_structure", "Long when a genuine Bollinger squeeze resolves upward."
+    ),
+    "time_of_day": (
+        "trend", "seasonality", "Long only during a declared UTC hour window."
+    ),
+    "day_of_week": (
+        "trend", "seasonality", "Long on weekdays, flat over the weekend."
+    ),
+    "turn_of_month": (
+        "trend", "seasonality", "Long near the calendar month boundary, flat mid-month."
+    ),
 }
 
 # preset -> list of parameter dicts to enumerate (each becomes one model).
@@ -91,6 +127,35 @@ _PRESET_GRID: dict[str, list[dict[str, float]]] = {
         {"window": 20, "expansion_ratio": 1.5}, {"window": 30, "expansion_ratio": 1.5},
         {"window": 20, "expansion_ratio": 2.0}, {"window": 40, "expansion_ratio": 1.5},
     ],
+    "keltner_reversion": [
+        {"window": 20, "n_atr": 2.0}, {"window": 20, "n_atr": 2.5}, {"window": 30, "n_atr": 2.0},
+    ],
+    "ou_fairvalue": [
+        {"window": 40, "entry_z": -1.5, "exit_z": 0.0},
+        {"window": 60, "entry_z": -1.5, "exit_z": 0.0},
+        {"window": 60, "entry_z": -2.0, "exit_z": 0.0},
+    ],
+    "vol_mean_reversion": [
+        {"window": 20, "spike_ratio": 1.5}, {"window": 30, "spike_ratio": 1.5},
+        {"window": 20, "spike_ratio": 2.0},
+    ],
+    "vol_regime_gate": [
+        {"window": 20, "calm_ratio": 1.2}, {"window": 30, "calm_ratio": 1.2},
+        {"window": 20, "calm_ratio": 1.5},
+    ],
+    "opening_range_breakout": [{"or_bars": ob} for ob in (15, 30, 60)],
+    "support_resistance_range": [{"lookback": lb} for lb in (20, 40, 55)],
+    "squeeze_breakout": [
+        {"window": 20, "n_std": 2.0, "squeeze_lookback": 60},
+        {"window": 20, "n_std": 2.5, "squeeze_lookback": 60},
+        {"window": 30, "n_std": 2.0, "squeeze_lookback": 90},
+    ],
+    "time_of_day": [
+        {"start_hour": 13, "end_hour": 21}, {"start_hour": 0, "end_hour": 8},
+        {"start_hour": 8, "end_hour": 16},
+    ],
+    "day_of_week": [{}],
+    "turn_of_month": [{"window_days": wd} for wd in (2, 3, 5)],
 }
 
 
@@ -160,7 +225,7 @@ def _ma_cross_factory(
     return lambda: trend_ma_cross.TrendMaCross(symbol=symbol, fast=fast, slow=slow)
 
 
-def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+def _synthetic_universe(symbol: Symbol) -> dict[str, list[float]]:
     # 3 assets, not 2: skfolio's HierarchicalRiskParity computes an "optimal
     # number of clusters" via a gap statistic that needs >=3 assets to have
     # any candidate cluster count to search over; with exactly 2 it raises
@@ -168,10 +233,80 @@ def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Str
     # given. This path was never actually exercised before docs/12 M13
     # installed skfolio/PyPortfolioOpt/riskfolio-lib -- all 3 were quarantined
     # until then, so the 2-asset universe's HRP incompatibility was latent.
-    universe: dict[str, list[float]] = {
+    return {
         symbol: [1.0, 2.0, 3.0, 4.0], "ETH-USDT": [1.0, 1.1, 1.2, 1.3],
         "SOL-USDT": [1.0, 0.95, 1.05, 1.0],
     }
+
+
+def _inverse_vol_weights(universe: Mapping[str, Sequence[float]]) -> Mapping[str, float]:
+    # docs/14 sleeve M: inverse-volatility weighting -- a native (numpy-only)
+    # allocator needing no heavy lib, unlike the cvxpy-based optimizers above.
+    inv_vol = {}
+    for sym, closes in universe.items():
+        returns = np.diff(np.log(np.asarray(closes, dtype=np.float64)))
+        std = float(np.std(returns))
+        inv_vol[sym] = 1.0 / std if std > 0 else 0.0
+    total = sum(inv_vol.values())
+    if total <= 0:
+        n = len(universe)
+        return dict.fromkeys(universe, 1.0 / n)
+    return {sym: weight / total for sym, weight in inv_vol.items()}
+
+
+def _min_variance_weights(universe: Mapping[str, Sequence[float]]) -> Mapping[str, float]:
+    # docs/14 sleeve M: the closed-form unconstrained global-minimum-variance
+    # portfolio (w = Sigma^-1 * 1 / (1' Sigma^-1 1)) -- a native (numpy-only)
+    # allocator; honestly declared unconstrained (a real weight can come out
+    # negative/short if the sample covariance calls for it), unlike the
+    # long-only cvxpy-based optimizers above.
+    symbols = list(universe.keys())
+    returns = np.array(
+        [np.diff(np.log(np.asarray(universe[sym], dtype=np.float64))) for sym in symbols]
+    )
+    cov = np.cov(returns)
+    try:
+        inv_cov = np.linalg.inv(np.atleast_2d(cov))
+    except np.linalg.LinAlgError:
+        n = len(symbols)
+        return dict.fromkeys(symbols, 1.0 / n)
+    ones = np.ones(len(symbols))
+    denom = float(ones @ inv_cov @ ones)
+    if denom == 0:
+        n = len(symbols)
+        return dict.fromkeys(symbols, 1.0 / n)
+    weights = (inv_cov @ ones) / denom
+    return dict(zip(symbols, weights.tolist(), strict=True))
+
+
+def _native_allocator_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    universe = _synthetic_universe(symbol)
+    specs: list[tuple[str, str, WeightFn]] = [
+        ("alloc_inverse_vol", "Inverse-volatility weight.", _inverse_vol_weights),
+        (
+            "alloc_min_variance", "Unconstrained global-minimum-variance weight.",
+            _min_variance_weights,
+        ),
+    ]
+
+    def make_factory(mid: str, fn: WeightFn) -> Callable[[], Strategy]:
+        # `mid`/`fn` are bound as this closure's own arguments, not looked
+        # up from the loop below at call time -- avoids the classic Python
+        # late-binding-closure bug where every factory would otherwise see
+        # whatever `model_id`/`weight_fn` the loop last left behind.
+        return lambda: StaticWeightProjectionAdapter(
+            symbol=symbol, name=mid, universe_closes=universe, weight_fn=fn
+        )
+
+    entries: list[tuple[ModelManifest, Callable[[], Strategy]]] = []
+    for model_id, one_liner, weight_fn in specs:
+        manifest = _native_manifest(model_id, "portfolio", "allocator", one_liner)
+        entries.append((manifest, make_factory(model_id, weight_fn)))
+    return entries
+
+
+def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    universe = _synthetic_universe(symbol)
     hedge = [10.0, 10.5, 10.2, 10.8]
 
     def factory(cls: Any, **kw: Any) -> Callable[[], Strategy]:
@@ -217,6 +352,8 @@ def build_scaled_catalog(symbol: Symbol) -> tuple[ModelCatalog, list[IntakeResul
     catalog = ModelCatalog()
     results = [
         catalog.register(manifest, factory)
-        for manifest, factory in (*_native_entries(symbol), *_heavy_entries(symbol))
+        for manifest, factory in (
+            *_native_entries(symbol), *_native_allocator_entries(symbol), *_heavy_entries(symbol)
+        )
     ]
     return catalog, results

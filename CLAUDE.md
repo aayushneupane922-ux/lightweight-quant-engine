@@ -9,7 +9,7 @@
 - **`docs/00`–`11`** — the specs. `docs/10` = build order (milestones + gates). `docs/11` = implementation contracts. `docs/archive/` = superseded; **do not build from it.**
 
 ## What this is
-A LOCAL, PAPER-ONLY, autonomous quant research **simulator**. Engine runs locally; GUI on `127.0.0.1` in a browser. An LLM+ML "engine room" runs a learn→adjust→learn loop over a large model catalog, with an aggressive **autopilot** and a **3D neural-web** view. Built for honest research and a great "watch it work" experience — never for claimed profit. **v1.0 (M0–M12), v2.0 (M13–M17), and v3.0 (M18–M22) are all built, tested, and tagged — this is not a greenfield project.** Current state + what's next: `HANDOFF.md`. Next scoped work (not started): v4.0, `docs/14-v4-catalog-expansion.md` (M23–M26).
+A LOCAL, PAPER-ONLY, autonomous quant research **simulator**. Engine runs locally; GUI on `127.0.0.1` in a browser. An LLM+ML "engine room" runs a learn→adjust→learn loop over a large model catalog, with an aggressive **autopilot** and a **3D neural-web** view. Built for honest research and a great "watch it work" experience — never for claimed profit. **v1.0 (M0–M12), v2.0 (M13–M17), v3.0 (M18–M22), and v4.0 (M23–M25) are all built, tested, and tagged — this is not a greenfield project.** Current state + what's next: `HANDOFF.md`. Next scoped work (not started): v5.0 — PRAXIS Quant rename, multi-instrument universe, Insight/Skill/Proof value pillars — `docs/15-v5-build-plan.md` (M26–M35).
 
 ## The 9 non-negotiables (never violate — full detail in GUARDRAILS.md)
 1. Paper-only. No real orders, no broker SDK, no credentials. `PaperBroker` is the only `ExecutionAdapter` (`is_paper=True`, asserted at startup). `LIVE_TRADING_ENABLED=False`, no flip; config rejects live.

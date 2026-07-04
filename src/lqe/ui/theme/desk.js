@@ -14,13 +14,18 @@
     return "badge b-" + state.toLowerCase();
   }
 
+  var tapePainted = false;
+
   function paintTape(rows) {
     var body = document.getElementById("tape-body");
     if (!body) return;
     body.innerHTML = "";
+    // stagger the reveal only on the tape's first paint (page load) --
+    // every later poll rebuilds the same rows and shouldn't re-animate.
+    var revealClass = tapePainted ? "" : " reveal-in";
     rows.slice().reverse().forEach(function (r) {
       var div = document.createElement("div");
-      div.className = "tr";
+      div.className = "tr" + revealClass;
       var t = (r.sim_ts || "").slice(11, 19);
       div.innerHTML =
         '<span class="t">' + t + "</span>" +
@@ -29,6 +34,7 @@
         '<span class="d">' + (r.detail || "") + "</span>";
       body.appendChild(div);
     });
+    tapePainted = true;
   }
 
   function paintSession(snap) {
@@ -326,6 +332,13 @@
     }, 4000);
   }
 
+  // calm, plain-language copy for the control toasts (V5 M26) instead of
+  // echoing the raw command string back at the operator.
+  var CONTROL_MESSAGES = {
+    KILL: "Stopped. Nothing is running.",
+    CLEAR_KILL: "Cleared — resuming normal operation.",
+  };
+
   function control(command) {
     var operator = window.prompt("Operator name (required, human-only):", "");
     if (!operator) return;
@@ -334,10 +347,15 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ command: command, operator: operator }),
     }).then(function () {
-      toast(command + " acknowledged.", "ok");
+      toast(CONTROL_MESSAGES[command] || (command + " acknowledged."), "ok");
       setTimeout(function () { location.reload(); }, 700);
     });
   }
+
+  var AUTOPILOT_MESSAGES = {
+    AUTOPILOT_ON: "Autopilot engaged — I'll research and validate; take the wheel anytime.",
+    AUTOPILOT_OFF: "Autopilot disengaged — you have the wheel.",
+  };
 
   function autopilot(command) {
     // no operator prompt for a non-destructive toggle; the audited
@@ -347,7 +365,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ command: command, operator: "desk-operator" }),
     }).then(function () {
-      toast(command + " acknowledged.", "ok");
+      toast(AUTOPILOT_MESSAGES[command] || (command + " acknowledged."), "ok");
       setTimeout(function () { location.reload(); }, 700);
     });
   }
@@ -370,6 +388,9 @@
     }
     if (toggleBtn && live) {
       var running = live.state === "running";
+      // the poll response is the source of truth -- always clears whatever
+      // disabled/spinner state startOrStopLive set optimistically on click.
+      toggleBtn.disabled = false;
       toggleBtn.textContent = running ? "Stop Live" : "Start Live";
       toggleBtn.className = "ctl-btn" + (running ? " stop" : "");
     }
@@ -394,12 +415,14 @@
     var btn = document.getElementById("live-toggle-btn");
     var resuming = btn && btn.textContent.indexOf("Stop") !== -1;
     if (resuming) {
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Stopping…'; }
       fetch("/api/jobs/live/stop", { method: "POST" })
         .then(function (r) { return r.json(); })
         .then(function (body) { toast(body.stopped ? "Live session stopped." : "Nothing was running.", "ok"); })
         .then(pollJobs);
       return;
     }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Starting…'; }
     var resumeChecked = document.getElementById("resume-check");
     var body = {
       adapter: "ccxt", exchange: "binance", symbol: "BTC-USDT", timeframe: "1m",
@@ -457,13 +480,55 @@
       .then(pollBacktest);
   }
 
+  // weighty KILL (V5 M26): press-and-hold, not a single click, so it can't
+  // fire from an accidental tap. `.kill-fill` (desk.css) visualizes the
+  // hold; releasing early cancels with no action taken.
+  var KILL_HOLD_MS = 550;
+
+  function wireKillHold(kill) {
+    var timer = null;
+    var holding = false;
+
+    function fire() {
+      holding = false;
+      kill.classList.remove("holding");
+      var willKill = !kill.classList.contains("armed");
+      var dot = document.getElementById("feed-dot");
+      if (dot) dot.classList.toggle("off", willKill); // instant feedback; the reload confirms it
+      control(willKill ? "KILL" : "CLEAR_KILL");
+    }
+
+    function start(e) {
+      if (holding) return;
+      holding = true;
+      kill.classList.add("holding");
+      timer = setTimeout(fire, KILL_HOLD_MS);
+    }
+
+    function cancel() {
+      if (!holding) return;
+      holding = false;
+      clearTimeout(timer);
+      kill.classList.remove("holding");
+    }
+
+    kill.addEventListener("mousedown", start);
+    kill.addEventListener("touchstart", start, { passive: true });
+    kill.addEventListener("mouseup", cancel);
+    kill.addEventListener("mouseleave", cancel);
+    kill.addEventListener("touchend", cancel);
+    kill.addEventListener("touchcancel", cancel);
+    kill.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); start(); }
+    });
+    kill.addEventListener("keyup", function (e) {
+      if (e.key === "Enter" || e.key === " ") cancel();
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var kill = document.getElementById("kill-btn");
-    if (kill) {
-      kill.addEventListener("click", function () {
-        control(kill.classList.contains("armed") ? "CLEAR_KILL" : "KILL");
-      });
-    }
+    if (kill) wireKillHold(kill);
     var ap = document.getElementById("autopilot-btn");
     if (ap) {
       ap.addEventListener("click", function () {

@@ -50,7 +50,7 @@
     <span class="control-status" id="live-status">idle · not started</span>
   </div>
   <div class="control-row">
-    <label class="control-check">
+    <label class="control-check" for="resume-check">
       <input type="checkbox" id="resume-check" checked>
       Resume last session if available
     </label>
@@ -71,6 +71,14 @@
       </div>
       <span class="{{ 'badge b-' + m.state.lower() }}">{{ m.state }}</span>
     </div>
+    <div class="stance" title="{{ '%.0f'|format(m.stance_pct * 100) }}% of equity deployed (long-only)">
+      <b style="width:{{ '%.0f'|format(m.stance_pct * 100) }}%"></b>
+    </div>
+    {% if m.sparkline_pct %}
+    <svg class="spark" viewBox="0 0 86 26" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="{{ spark_points(m.sparkline_pct) }}"></polyline>
+    </svg>
+    {% endif %}
     <div class="row">
       <div class="kv">
         <div class="k">Sim return</div>

@@ -130,6 +130,66 @@ def test_no_leftover_command_palette_markup_or_styling() -> None:
     assert "palette" not in desk_js.lower()
 
 
+def test_v5_m26_type_scale_meets_the_new_floor() -> None:
+    # V5 M26 audit §1: body >= 14px, the label selectors named in the
+    # build plan's design quick-reference >= 11px, tags/badges >= 10px.
+    body_block = re.search(r"\nbody \{[^}]*\}", _DESK_CSS)
+    assert body_block is not None
+    assert "font-size:14px" in body_block.group(0)
+
+    for selector in [".stat .k {", ".mode {", ".foot {", ".kv .k {"]:
+        idx = _DESK_CSS.find(selector)
+        assert idx != -1, f"missing selector: {selector}"
+        block = _DESK_CSS[idx : _DESK_CSS.index("}", idx) + 1]
+        size = re.search(r"font-size:(\d+(?:\.\d+)?)px", block)
+        assert size is not None, f"no font-size declared for {selector}"
+        assert float(size.group(1)) >= 11, f"{selector} is below the 11px label floor"
+
+    for selector in [".badge {", ".tag-unproven {", ".tag-validated {"]:
+        idx = _DESK_CSS.find(selector)
+        assert idx != -1, f"missing selector: {selector}"
+        block = _DESK_CSS[idx : _DESK_CSS.index("}", idx) + 1]
+        size = re.search(r"font-size:(\d+(?:\.\d+)?)px", block)
+        assert size is not None
+        assert float(size.group(1)) >= 10, f"{selector} is below the 10px tag floor"
+
+
+def test_v5_m26_section_h_class_replaces_repeated_inline_headings() -> None:
+    assert ".section-h" in _DESK_CSS
+    for name in ("intel.html", "blotter.html", "risk.html"):
+        html = (_TEMPLATES / name).read_text(encoding="utf-8")
+        assert 'class="section-h"' in html
+        # the old fully-inline duplicated style block must be gone, not
+        # just supplemented -- this was the actual "tokenize" ask.
+        assert "text-transform:uppercase; color:var(--intel)" not in html
+
+
+def test_v5_m26_press_feedback_declared_on_interactive_controls() -> None:
+    assert ":active" in _DESK_CSS
+    active_block = re.search(r"\.kill:active[^{]*\{[^}]*\}", _DESK_CSS)
+    assert active_block is not None
+    assert "scale(.97)" in active_block.group(0)
+
+
+def test_v5_m26_kill_is_a_hold_to_confirm_gesture_not_a_single_click() -> None:
+    desk_js = (_THEME / "desk.js").read_text(encoding="utf-8")
+    assert "KILL_HOLD_MS" in desk_js
+    assert "mousedown" in desk_js and "kill" in desk_js.lower()
+    assert ".kill-fill" in _DESK_CSS
+    assert "kill.holding" in _DESK_CSS.replace(" ", "")
+
+
+def test_v5_m26_nav_spine_uses_vendored_svg_icons_not_text_glyphs() -> None:
+    base_html = (_TEMPLATES / "base.html").read_text(encoding="utf-8")
+    assert "nav_icon(id)" in base_html
+    vendor_dir = _THEME / "vendor" / "lucide"
+    assert vendor_dir.is_dir()
+    svgs = list(vendor_dir.glob("*.svg"))
+    assert len(svgs) == 8
+    for svg in svgs:
+        assert "ISC" in svg.read_text(encoding="utf-8")
+
+
 def test_candlestick_series_uses_fill_vs_outline_not_hue_alone() -> None:
     # docs/13 M19 a11y: bullish/bearish must survive colorblindness, so the
     # up candle is hollow/outline-only (near-transparent fill + a colored

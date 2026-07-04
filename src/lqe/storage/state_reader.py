@@ -33,6 +33,12 @@ _FROZEN = ConfigDict(frozen=True)
 ModelState = Literal["ARMED", "LONG", "SHORT", "FIRED", "HALTED"]
 ModelStatus = Literal["unproven", "validated"]
 
+# V5 M26 "living model cells": the floor's per-cell sparkline is a bounded
+# ring of the last N `sim_return_pct` samples (one per fill) -- capped the
+# same way ADAPTER_HISTORY_CAP bounds adapter history, so a long-running
+# session's memory/serialization cost per cell stays flat.
+_SPARKLINE_CAP = 24
+
 
 class CatalogModelInfo(BaseModel):
     """The slice of a model's manifest the floor needs, handed in by the
@@ -58,6 +64,11 @@ class ModelCell(BaseModel):
     sim_return_pct: float | None  # None = not enough data yet (rendered "—")
     n_trades: int
     last_reason: str
+    # V5 M26 living cells: last <=24 sim_return_pct samples, oldest first
+    # (one per fill); and how much of current equity this model's open
+    # position represents, in [0, 1] -- long-only, so never bidirectional.
+    sparkline_pct: list[float] = []
+    stance_pct: float = 0.0
 
 
 class SessionStats(BaseModel):
@@ -820,6 +831,8 @@ class _StrategyAgg:
         self.last_reason = ""
         self.last_direction = "FLAT"
         self.last_fill_seq = -1  # "FIRED" == filled on the newest record; computed at output time
+        self.last_fill_px = Decimal("0")  # V5 M26: stance_pct's notional reference
+        self.return_history: list[float] = []  # V5 M26: bounded sparkline, see _SPARKLINE_CAP
         self._lots: list[tuple[Decimal, Decimal]] = []  # (qty, px) FIFO, long-only round trips
 
     def clone(self) -> _StrategyAgg:
@@ -830,14 +843,22 @@ class _StrategyAgg:
         c.last_reason = self.last_reason
         c.last_direction = self.last_direction
         c.last_fill_seq = self.last_fill_seq
+        c.last_fill_px = self.last_fill_px
+        c.return_history = list(self.return_history)
         c._lots = list(self._lots)
         return c
+
+    def record_sample(self, sample: float) -> None:
+        self.return_history.append(sample)
+        if len(self.return_history) > _SPARKLINE_CAP:
+            del self.return_history[: len(self.return_history) - _SPARKLINE_CAP]
 
     def on_buy(self, qty: Decimal, px: Decimal, fee: Decimal) -> None:
         self._lots.append((qty, px))
         self.net_qty += qty
         self.realized -= fee
         self.n_trades += 1
+        self.last_fill_px = px
 
     def on_sell(self, qty: Decimal, px: Decimal, fee: Decimal) -> None:
         remaining = qty
@@ -853,6 +874,7 @@ class _StrategyAgg:
         self.net_qty -= qty
         self.realized -= fee
         self.n_trades += 1
+        self.last_fill_px = px
 
 
 class _Reconstruction:
@@ -978,6 +1000,9 @@ class _Reconstruction:
         agg.last_fill_seq = env.seq
         self._fill_pnl[env.seq] = agg.realized - realized_before
         self._fill_envs.append(env)
+        sample = _sim_return_pct(agg, self._starting_equity)
+        if sample is not None:
+            agg.record_sample(sample)
 
     def _on_RiskStateEvent(self, env: EventEnvelope) -> None:
         p = env.payload
@@ -1008,6 +1033,9 @@ class _Reconstruction:
     def model_cells(self) -> list[ModelCell]:
         # union of catalog models and any strategy that actually traded
         ids = list(self._catalog) + [s for s in self._strategies if s not in self._catalog]
+        current_equity = (
+            Decimal(str(self._last_risk_state["equity"])) if self._last_risk_state else None
+        )
         cells = []
         for model_id in ids:
             info = self._catalog.get(model_id)
@@ -1027,6 +1055,8 @@ class _Reconstruction:
                     sim_return_pct=sim_return,
                     n_trades=agg.n_trades if agg else 0,
                     last_reason=agg.last_reason if agg else "",
+                    sparkline_pct=list(agg.return_history) if agg else [],
+                    stance_pct=_stance_pct(agg, current_equity),
                 )
             )
         return cells
@@ -1115,6 +1145,21 @@ def _sim_return_pct(agg: _StrategyAgg | None, starting_equity: Decimal | None) -
     if agg is None or agg.n_trades == 0 or starting_equity is None or starting_equity <= 0:
         return None
     return float(agg.realized / starting_equity * 100)
+
+
+def _stance_pct(agg: _StrategyAgg | None, equity: Decimal | None) -> float:
+    """V5 M26 living cells: how much of *current* equity this model's open
+    position represents, in [0, 1]. Deliberately not "% of a per-strategy
+    risk budget" -- that config value lives in `risk/rules.py`, outside
+    what `StateReader` can see (it only ever replays the audit log), so
+    this uses only data the log itself carries: the position's own last
+    fill price times its net qty, against equity from the latest
+    `RiskStateEvent`. Long-only engine (GUARDRAILS: no SHORT) -- a plain
+    0-100% fill, never a bidirectional long/short bar."""
+    if agg is None or equity is None or equity <= 0 or agg.net_qty <= 0:
+        return 0.0
+    notional = agg.net_qty * agg.last_fill_px
+    return max(0.0, min(1.0, float(notional / equity)))
 
 
 # --- tape formatting ------------------------------------------------------

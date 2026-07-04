@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
 from lqe.live.control import Command
 from lqe.ui.data import DeskData
@@ -58,15 +59,98 @@ _NAV = [
     ("blotter", "Blotter", "F8", "/blotter"),
 ]
 
+# V5 M26: retires the ad-hoc Unicode glyphs the spine nav used to show
+# (▦, ▤, ◇, …) for vendored Lucide icons -- inner shape markup only (no
+# outer <svg> wrapper), source-of-truth copies in theme/vendor/lucide/.
+_NAV_ICONS: dict[str, str] = {
+    "floor": (
+        '<rect width="7" height="7" x="3" y="3" rx="1"/>'
+        '<rect width="7" height="7" x="14" y="3" rx="1"/>'
+        '<rect width="7" height="7" x="14" y="14" rx="1"/>'
+        '<rect width="7" height="7" x="3" y="14" rx="1"/>'
+    ),
+    "catalog": (
+        '<path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/>'
+        '<path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/>'
+    ),
+    "research": (
+        '<path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96'
+        'l5.51-10.08A2 2 0 0 0 10 8V2"/>'
+        '<path d="M6.453 15h11.094"/><path d="M8.5 2h7"/>'
+    ),
+    "intel": (
+        '<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051'
+        'a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0'
+        'l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 '
+        '1.594-1.594z"/>'
+        '<path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/>'
+    ),
+    "engine": (
+        '<rect x="16" y="16" width="6" height="6" rx="1"/>'
+        '<rect x="2" y="16" width="6" height="6" rx="1"/>'
+        '<rect x="9" y="2" width="6" height="6" rx="1"/>'
+        '<path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/>'
+        '<path d="M12 12V8"/>'
+    ),
+    "risk": (
+        '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 '
+        '1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>'
+        '<path d="M12 8v4"/><path d="M12 16h.01"/>'
+    ),
+    "daily": (
+        '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/>'
+        '<path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/>'
+        '<path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/>'
+    ),
+    "blotter": (
+        '<path d="M12 17V7"/><path d="M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8"/>'
+        '<path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 '
+        '1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 '
+        '0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7'
+        '-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 '
+        '0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 '
+        '1 1 0 0 1-1-1z"/>'
+    ),
+}
+
+
+def _nav_icon(nav_id: str) -> Markup:
+    inner = _NAV_ICONS.get(nav_id, "")
+    return Markup(
+        '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + inner + "</svg>"
+    )
+
 
 def _primary_symbol(data: DeskData) -> str | None:
     health = data.snapshot().data_health
     return health[0].symbol if health else None
 
 
+def _spark_points(values: list[float]) -> str:
+    """V5 M26 living cells: normalize a model cell's raw `sim_return_pct`
+    samples into an SVG polyline `points` string over an 86x26 viewBox. A
+    flat (or single-sample) series renders as a flat mid-height line rather
+    than dividing by a zero range."""
+    if not values:
+        return ""
+    lo, hi = min(values), max(values)
+    span = hi - lo
+    n = len(values)
+    step = 86.0 / (n - 1) if n > 1 else 0.0
+    points = []
+    for i, v in enumerate(values):
+        x = i * step
+        y = 13.0 if span == 0 else 26.0 - ((v - lo) / span) * 26.0
+        points.append(f"{x:.1f},{y:.1f}")
+    return " ".join(points)
+
+
 def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> FastAPI:
     app = FastAPI(title="Obsidian Desk", docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(directory=str(_TEMPLATES))
+    templates.env.globals["spark_points"] = _spark_points
+    templates.env.globals["nav_icon"] = _nav_icon
     app.mount("/theme", StaticFiles(directory=str(_THEME)), name="theme")
     app.mount("/viz3d", StaticFiles(directory=str(_VIZ3D)), name="viz3d")
 

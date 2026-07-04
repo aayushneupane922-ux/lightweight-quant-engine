@@ -11,7 +11,7 @@
   Nothing here is promoted without a gate PASS, and the LLM can neither size an order nor clear the kill.
 </div>
 
-<h2 style="font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--intel); margin-bottom:8px">Engine Room · live conversation</h2>
+<h2 class="section-h" style="margin-bottom:8px">Engine Room · live conversation</h2>
 <div class="convo-scrub">
   <span class="mono" id="convo-seq-label">seq {{ conversation.at_seq }} / {{ conversation.max_seq }}</span>
   <input type="range" id="convo-scrubber" min="0" max="{{ conversation.max_seq }}" value="{{ conversation.at_seq }}" step="1">
@@ -30,7 +30,7 @@
   {% endif %}
 </div>
 
-<h2 style="font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--intel); margin:18px 0 8px">Per-hypothesis summary</h2>
+<h2 class="section-h" style="margin:18px 0 8px">Per-hypothesis summary</h2>
 <div class="cards">
   {% for c in cards %}
   <div class="card">

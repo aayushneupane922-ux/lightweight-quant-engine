@@ -30,7 +30,11 @@
       AUTOPILOT {% if autopilot_on %}ON{% else %}OFF{% endif %}
     </button>
     <span class="shield">PAPER · LIVE LOCKED</span>
-    <button class="kill{% if kill_active %} armed{% endif %}" id="kill-btn">{% if kill_active %}KILLED{% else %}KILL{% endif %}</button>
+    <button class="kill{% if kill_active %} armed{% endif %}" id="kill-btn"
+            title="Press and hold to confirm — a brief hold prevents an accidental click.">
+      <span class="kill-fill"></span>
+      <span class="kill-label">{% if kill_active %}KILLED{% else %}KILL{% endif %}</span>
+    </button>
   </div>
 
   <!-- BODY -->
@@ -38,6 +42,7 @@
     <div class="spine">
       {% for id, label, fk, href in nav %}
       <a class="mode{% if active == id %} active{% endif %}" href="{{ href }}">
+        {{ nav_icon(id) }}
         <span>{{ label }}</span><span class="fk">{{ fk }}</span>
       </a>
       {% endfor %}

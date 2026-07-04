@@ -21,6 +21,7 @@ from lqe.core.events import (
     OrderIntent,
     PromotionEvent,
     RiskDecision,
+    RiskStateEvent,
     TrialEvent,
     ValidationEvent,
 )
@@ -97,6 +98,92 @@ def test_a_catalog_model_that_never_traded_shows_no_return_and_zero_trades() -> 
     assert idle.n_trades == 0
     assert idle.sim_return_pct is None  # rendered "—", not a fake 0.0
     assert idle.state == "ARMED"
+    # V5 M26 living cells: a model that never traded has an empty sparkline
+    # and a flat (0%) stance -- never a fake/default-looking value.
+    assert idle.sparkline_pct == []
+    assert idle.stance_pct == 0.0
+
+
+def _fills_log(n_fills: int) -> AuditLog:
+    """A single strategy ("alpha") alternating BUY/SELL fills of 1 unit
+    each -- every fill is a round trip against the previous one, so every
+    fill (buy or sell) produces a `sim_return_pct` sample. Used to exercise
+    the sparkline's 24-sample cap without depending on organic backtest
+    trade counts."""
+    log = AuditLog()
+    seq = 1
+    log.append(
+        event_type="RiskStateEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=RiskStateEvent(
+            equity=Decimal("10000"), cash=Decimal("10000"), daily_pnl=Decimal("0"),
+            gross_exposure=Decimal("0"), peak_equity=Decimal("10000"), drawdown=0.0,
+            open_orders=0, kill_active=False,
+        ),
+    )
+    seq += 1
+    for i in range(n_fills):
+        side = "BUY" if i % 2 == 0 else "SELL"
+        intent_id = f"i-{i}"
+        order_id = f"order:{intent_id}"
+        log.append(
+            event_type="OrderIntent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+            payload=OrderIntent(
+                intent_id=intent_id, signal_ref=f"s{i}", strategy="alpha", symbol=SYMBOL,
+                side=side, qty=Decimal("1"), order_type="MARKET",
+                idempotency_key=f"k{i}", reason="test",
+            ),
+        )
+        seq += 1
+        log.append(
+            event_type="Order", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+            payload=Order(
+                order_id=order_id, intent_ref=intent_id, side=side, qty=Decimal("1"),
+                order_type="MARKET", status="PENDING",
+            ),
+        )
+        seq += 1
+        log.append(
+            event_type="FillEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+            payload=FillEvent(
+                order_id=order_id, fill_ts=NOW, fill_px=Decimal(100 + i),
+                fill_qty=Decimal("1"), fee=Decimal("0.01"), slippage_bps=0.5, partial=False,
+            ),
+        )
+        seq += 1
+    return log
+
+
+def test_sparkline_caps_at_24_samples_regardless_of_fill_count() -> None:
+    reader = StateReader(_fills_log(30).records)
+    cell = next(c for c in reader.snapshot().models if c.model_id == "alpha")
+    assert len(cell.sparkline_pct) == 24
+    assert all(isinstance(x, float) for x in cell.sparkline_pct)
+
+
+def test_sparkline_shorter_than_cap_keeps_every_sample() -> None:
+    reader = StateReader(_fills_log(5).records)
+    cell = next(c for c in reader.snapshot().models if c.model_id == "alpha")
+    assert len(cell.sparkline_pct) == 5
+
+
+def test_stance_pct_is_bounded_and_reflects_the_open_position() -> None:
+    # 30 fills alternating BUY/SELL from a flat start ends net long 1 unit
+    # (BUY, SELL, BUY, SELL, ... BUY -- 15 buys, 15 sells... actually 30 is
+    # even, so it ends flat; use an odd count to end holding a position).
+    reader = StateReader(_fills_log(29).records)
+    cell = next(c for c in reader.snapshot().models if c.model_id == "alpha")
+    assert 0.0 <= cell.stance_pct <= 1.0
+    assert cell.stance_pct > 0.0  # holds an open long position
+
+
+def test_stance_and_sparkline_are_deterministic_on_replay() -> None:
+    records = _fills_log(29).records
+    a = StateReader(records).snapshot()
+    b = StateReader(records).snapshot()
+    cell_a = next(c for c in a.models if c.model_id == "alpha")
+    cell_b = next(c for c in b.models if c.model_id == "alpha")
+    assert cell_a.sparkline_pct == cell_b.sparkline_pct
+    assert cell_a.stance_pct == cell_b.stance_pct
 
 
 def test_tape_is_incremental_and_capped() -> None:

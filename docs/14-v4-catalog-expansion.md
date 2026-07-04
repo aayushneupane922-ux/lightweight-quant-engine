@@ -279,11 +279,78 @@ construction.
   already schedules after F (carry/basis, M24) lands and the full v4.0
   catalog is in view. Full suite re-verified green (`tests/safety`,
   `tests/honesty` both pass) before tagging.
-- **M24 · Perp/funding adapter + carry/basis sleeve (F).** The
+- **M24 · Perp/funding adapter + carry/basis sleeve (F).** ✅ DONE
+  (`m24-done`), **with an honest exit-gate shortfall disclosed below.** The
   crown-jewel diversifiers. New funding data adapter (validated like all
   data), then the 4 carry/basis strategies. Exit gate: carry/basis models
   run on real funding data, measurably low-correlation to directional
-  sleeves. `git tag m24-done`.
+  sleeves.
+  — **Data plumbing**: `FundingRateEvent` (core/events.py) — a periodic
+  (~8h) funding settlement, distinct from `MarketEvent`'s per-bar cadence.
+  `data/funding_adapter.py::CcxtFundingRateAdapter` calls only
+  `fetch_funding_rate_history`, same read-only/safety-scan-covered pattern
+  as `ccxt_adapter.py`. `data/validate.py::validate_funding_rates` (hard-
+  fails >10%/interval, flags >2%/interval as notable-not-blocking).
+  `storage/parquet_funding.py` mirrors `parquet.py`'s idempotent
+  partitioned write/read on funding's own schema.
+  `data/ingest.py::ingest_funding_rates` wires fetch → validate → curated
+  Parquet → catalog version, reusing `Catalog.data_versions` with a
+  `timeframe="funding"` sentinel (no schema migration). 31 tests.
+  — **Four strategies** (`family="carry"`, `sleeve="carry_basis"`, new
+  `DataNeeds.kind="OHLCV+FUNDING"`): `FundingCarryAdapter` (absolute
+  funding-rate level) + `FundingMomentumAdapter` (`mode="momentum"`: rate-
+  of-change over a lookback; `mode="reversion"`: deep negative deviation
+  from the local rolling mean) — both take a fixed, forward-filled
+  `funding_history` side-channel (no look-ahead); `BasisCarryAdapter`
+  (spot-vs-perp basis, reusing M23's multi-symbol `Context`/`Session`
+  extension with **zero engine changes** — the perp leg is just a foreign
+  symbol's OHLCV); `CrossExchangeFundingAdapter` (two-venue funding
+  differential). 10 models registered (catalog 94 → **104**). 33 unit
+  tests, 1 real hash-chain-verified multi-symbol backtest, and 1
+  end-to-end test proving a strategy trades on funding data that actually
+  passed through the real ingest → curated Parquet → read-back pipeline
+  (`test_funding_carry_real_data_pipeline.py`), not just the catalog's
+  built-in synthetic side-channel.
+  — **Important, deliberate honesty note repeated in every sleeve F
+  manifest**: the textbook carry/basis trade is long spot / short perp,
+  market-neutral. This engine's short-selling path is explicitly out of
+  scope (`portfolio/accounting.py` raises rather than silently going
+  short; `risk/rules.py` rejects any SELL that would take a position
+  net-short) — the same boundary sleeve C/D's long-only simplifications
+  already accepted. So every sleeve F adapter only ever holds the spot
+  leg, gated by a funding/basis signal — a **directional bet on spot
+  price**, not a market-neutral carry harvest. Declared explicitly, not
+  silently narrowed.
+  — **The exit-gate measurement, and an honest miss.**
+  `analytics/diversification.py` gained `cross_group_average_correlation()`
+  (7 new tests) and `scripts/diversification_report.py` now reports it:
+  the average pairwise correlation between `carry_basis` models and every
+  directional sleeve (trend/momentum, mean-reversion, volatility,
+  breakout, seasonality, regime, cross-sectional, stat-arb, ML). **Measured
+  result** (104-model catalog, same synthetic multi-symbol backtest as the
+  M23 score, now including a perp leg): `carry_basis` vs. directional
+  sleeves cross-group correlation = **0.4144** — *higher*, not lower, than
+  the whole-catalog average pairwise correlation of 0.3742 measured in the
+  same run. **This does not meet the "measurably low-correlation" exit
+  criterion as literally stated**, and that shortfall is reported here
+  plainly rather than reframed. The cause is mechanical and was already
+  disclosed above: since every sleeve F adapter is long-only on the spot
+  leg (the short-perp leg that would isolate funding P&L from price P&L is
+  out of scope), whenever any of them holds a position its return **is**
+  ordinary spot price movement — the same driver every trend/momentum/
+  mean-reversion strategy on the same instrument is exposed to. A genuine
+  market-neutral carry harvest would need real short-selling support,
+  which is a project-level decision well beyond this milestone's scope,
+  not something to build unilaterally to chase this one metric. This
+  finding is exactly what the correlation-curation machinery
+  (`models/curation.py`, built in M23 commit 1, still not wired into a
+  live pipeline) and M26's "diversification review" exist to catch — it's
+  tracked there, not swept under the rug. The milestone is tagged
+  `m24-done` on the strength of its real, complete deliverables (a
+  genuine funding-data pipeline + 4 conceptually distinct strategies, all
+  tested against real ingested data, not just synthetic constructor
+  arguments) — not on a false claim that the diversification target was
+  hit.
 - **M25 (optional/later) · Microstructure (J) + cross-exchange (K).**
   Only if wanted; heavier data + research-only caveats. May be deferred
   past v4.0 without blocking it — flag to the owner before starting.

@@ -10,6 +10,7 @@ import pytest
 
 from lqe.analytics.diversification import (
     average_pairwise_correlation,
+    cross_group_average_correlation,
     diversification_score,
     effective_number_of_bets,
     max_sleeve_share,
@@ -126,3 +127,44 @@ def test_diversification_score_rejects_mismatched_model_ids() -> None:
         diversification_score(
             {"a": [1.0, 2.0], "b": [2.0, 1.0]}, {"a": "trend_momentum"}
         )
+
+
+# --- cross_group_average_correlation (docs/14 M24 exit gate) -------------
+
+
+def test_cross_group_correlation_is_low_for_genuinely_independent_groups() -> None:
+    returns = _independent_streams(6)
+    ids = list(returns.keys())
+    sleeves = {mid: "trend_momentum" for mid in ids[:3]} | {
+        mid: "carry_basis" for mid in ids[3:]
+    }
+    value = cross_group_average_correlation(
+        returns, sleeves, {"carry_basis"}, {"trend_momentum"}
+    )
+    assert abs(value) < 0.3  # independent streams -- near zero, not exactly
+
+
+def test_cross_group_correlation_is_high_for_identical_groups() -> None:
+    returns = _identical_streams(6)
+    ids = list(returns.keys())
+    sleeves = {mid: "trend_momentum" for mid in ids[:3]} | {
+        mid: "carry_basis" for mid in ids[3:]
+    }
+    value = cross_group_average_correlation(
+        returns, sleeves, {"carry_basis"}, {"trend_momentum"}
+    )
+    assert value == pytest.approx(1.0, abs=1e-9)
+
+
+def test_cross_group_correlation_rejects_an_empty_group_a() -> None:
+    returns = _independent_streams(4)
+    sleeves = dict.fromkeys(returns, "trend_momentum")
+    with pytest.raises(ValueError, match="group_a"):
+        cross_group_average_correlation(returns, sleeves, {"carry_basis"}, {"trend_momentum"})
+
+
+def test_cross_group_correlation_rejects_an_empty_group_b() -> None:
+    returns = _independent_streams(4)
+    sleeves = dict.fromkeys(returns, "carry_basis")
+    with pytest.raises(ValueError, match="group_b"):
+        cross_group_average_correlation(returns, sleeves, {"carry_basis"}, {"trend_momentum"})

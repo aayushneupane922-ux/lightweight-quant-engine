@@ -78,6 +78,32 @@ def sleeve_distribution(sleeve_by_model: dict[str, str]) -> dict[str, int]:
     return counts
 
 
+def cross_group_average_correlation(
+    returns_by_model: dict[str, list[float]],
+    sleeve_by_model: dict[str, str],
+    group_a: set[str],
+    group_b: set[str],
+) -> float:
+    """docs/14 §6 (v4) M24's exit criterion: "measurably low-correlation to
+    directional sleeves." Unlike `average_pairwise_correlation` (every pair
+    in the whole set), this averages only the *cross*-group pairs -- e.g.
+    every `carry_basis` model against every directional-sleeve model --
+    ignoring within-group pairs on either side. Lower means the two groups'
+    return drivers are genuinely more independent of each other.
+    """
+    ids, corr = pairwise_correlation_matrix(returns_by_model)
+    a_idx = [i for i, mid in enumerate(ids) if sleeve_by_model[mid] in group_a]
+    b_idx = [i for i, mid in enumerate(ids) if sleeve_by_model[mid] in group_b]
+    if not a_idx:
+        raise ValueError(f"no models found in group_a sleeves {group_a}")
+    if not b_idx:
+        raise ValueError(f"no models found in group_b sleeves {group_b}")
+    values = [corr[i][j] for i in a_idx for j in b_idx if i != j]
+    if not values:
+        raise ValueError("group_a and group_b produced no distinct cross-pairs")
+    return float(np.mean(values))
+
+
 def max_sleeve_share(sleeve_by_model: dict[str, str]) -> tuple[str, float]:
     """docs/14 §7's "no single sleeve dominating" acceptance criterion --
     the sleeve with the most models and its share of the total."""

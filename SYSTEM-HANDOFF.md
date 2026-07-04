@@ -277,9 +277,34 @@ Every milestone above is committed to git and tagged (`m0-done` through
 `m25-done`, plus `v0.1`/`v1.0`/`v2.0`/`v3.0`/`v4.0`) — nothing above is
 aspirational or in-progress; all of it is built, tested, and verified.
 
-**Current health** (re-verified the same day as this document): **571
+**Post-v4.0 hardening (not a version bump — the same v4.0 catalog/behavior,
+made more correct and faster to use):**
+
+- **A whole-system audit + UI/UX sweep** found and fixed two real
+  inconsistencies: the desk never showed a model's *sleeve*, only its
+  *family*, even though sleeve is the actual diversification unit v4.0's
+  whole story is about; and `lqe live`'s "no bars returned" error didn't
+  explain the most likely real cause. It also found (and fixed, then
+  removed outright at the user's request, since it duplicated the
+  existing keyboard navigation) a command-palette UI feature that a CSS
+  bug had left permanently stuck open on top of the dashboard.
+- **A 4-phase performance overhaul**, prompted by the dashboard visibly
+  slowing down over a long-running session. The root causes: the desk
+  was replaying its *entire* history from scratch on nearly every
+  refresh, the live-trading loop was rewriting its whole audit trail to
+  disk every cycle instead of just the new part, the AI's research step
+  froze live trading for 8–30+ seconds every few bars, and every trading
+  model recomputed its full price history on every single new bar
+  instead of just the recent window it actually needs. All four are
+  fixed — outputs are provably identical to before (same signals, same
+  fills, same audit trail — pinned by new automated tests, not just
+  "seems fine"), but a long session that used to bog down noticeably now
+  stays responsive indefinitely. See `HANDOFF.md` §1h for the exact
+  before/after numbers.
+
+**Current health** (re-verified the same day as this document): **605
 automated tests, 0 failing**; static type-checking and linting both clean
-across all 127 source files; the license-gate scan passes for all 50
+across all 128 source files; the license-gate scan passes for all 50
 runtime dependencies.
 
 ---
@@ -384,6 +409,7 @@ gaps or hidden problems.
 ---
 
 *This document was written after a full system-wide audit at v4.0 (all
-tests green, a UI/UX sweep that found and fixed two real inconsistencies —
-see `HANDOFF.md` for the exact diff). It reflects the system as it actually
-runs today, not as it was originally planned.*
+tests green, a UI/UX sweep that found and fixed real inconsistencies, and a
+4-phase performance overhaul with before/after numbers — see `HANDOFF.md`
+for the exact diffs). It reflects the system as it actually runs today, not
+as it was originally planned.*

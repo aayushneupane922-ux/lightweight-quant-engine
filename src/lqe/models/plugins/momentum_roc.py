@@ -11,6 +11,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest
 MANIFEST = ModelManifest(
     id="momentum_roc",
     family="momentum",
+    sleeve="trend_momentum",
     one_liner="Long once N-bar rate-of-change clears a threshold, flat at/below zero.",
     economic_rationale="Accelerating price change can signal a fresh momentum regime starting.",
     data_needs=DataNeeds(instruments=1, kind="OHLCV"),

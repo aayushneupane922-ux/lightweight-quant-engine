@@ -65,13 +65,23 @@ direction.
 ## 3. Intake gets one new step: correlation curation
 Existing intake (deterministic · permissive license · manifest-complete ·
 passes a backtest · `unproven` until gated) is unchanged, **plus**:
-- [ ] **Redundancy check:** before a model earns a catalog slot, compute
+- [x] **Redundancy check:** before a model earns a catalog slot, compute
   its return-stream correlation to existing models on held-out data. If
   it's ~redundant (high corr to something already present) **and** not
   clearly better, **quarantine it as a duplicate driver.** A diversified
   catalog rejects the 40th trend clone.
-- [ ] Tag each model with its **sleeve** in the manifest so the
+  — `src/lqe/models/curation.py::correlation_curation_check` (a pure,
+  composable function taking aligned candidate + existing return streams
+  and their metrics, deliberately kept separate from `intake_check` since
+  it needs real backtest returns rather than just a manifest + factory).
+  7 tests, `tests/unit/test_curation.py`.
+- [x] Tag each model with its **sleeve** in the manifest so the
   diversification score and the "no sleeve dominates" rule are computable.
+  — `Sleeve` (14 values: the 13 lettered sleeves + `control` for the
+  deliberately-weak `naive_always_long`) added to `ModelManifest` in
+  `src/lqe/models/manifest.py`; every model in both the default (11) and
+  scaled (51) catalogs retagged. Pinned by
+  `test_every_admitted_model_carries_a_sleeve_tag` (both catalogs).
 
 ## 4. The trial-count consequence (do not skip)
 The promotion gate's Deflated Sharpe / PBO uses the **honest count of
@@ -100,11 +110,28 @@ construction.
   is real diversification for one asset class.
 
 ## 6. Milestone structure (v4)
-- **M23 · Diversification framework + no-new-data sleeves.**
+- **M23 · Diversification framework + no-new-data sleeves.** ⏳ IN PROGRESS
   Correlation-curation intake, the diversification score, sleeve tagging,
   and sleeves A–E, G–I, L, M (~35 strategies) on existing spot data. Update
   the gate's trial-count. Exit gate: score computed; each model passes
   intake + the (updated) gate; safety/honesty green. `git tag m23-done`.
+  — **Framework groundwork done, not yet tagged** (the milestone's own
+  strategy-count work — the ~35 new sleeve strategies — hasn't started
+  yet): `Sleeve` taxonomy + manifest tagging (§3, done, all 62 existing
+  models retagged), `models/curation.py::correlation_curation_check` (§3,
+  done, composable but not yet wired into a live intake pipeline — it needs
+  real held-out returns for both candidate and existing models, which only
+  exist once a candidate has actually been backtested), and
+  `analytics/diversification.py` (the score + effective-number-of-bets +
+  no-sleeve-dominates check, tested against synthetic
+  correlated/uncorrelated series). The trial-count consequence (§4) was
+  checked, not built: `ExperimentRegistry.trial_count()` is already a
+  blanket `count(*)` over every trial ever recorded, and
+  `Orchestrator._n_trials_context` already queries it live — this already
+  spans the full catalog by construction, confirmed by the pre-existing
+  `test_trial_count_spans_multiple_models`; nothing to change. 20 new
+  tests (`test_diversification.py` ×13, `test_curation.py` ×7) plus 3 more
+  pinning the sleeve-tagging invariant on both catalogs.
 - **M24 · Perp/funding adapter + carry/basis sleeve (F).** The
   crown-jewel diversifiers. New funding data adapter (validated like all
   data), then the 4 carry/basis strategies. Exit gate: carry/basis models

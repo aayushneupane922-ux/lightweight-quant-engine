@@ -15,6 +15,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest, ValidationNeeds
 MANIFEST = ModelManifest(
     id="naive_always_long",
     family="trend",
+    sleeve="control",
     one_liner="Goes long on bar one and never exits. A deliberately weak control.",
     economic_rationale="None — this is buy-and-hold, kept only as an honesty control.",
     data_needs=DataNeeds(instruments=1, kind="OHLCV"),

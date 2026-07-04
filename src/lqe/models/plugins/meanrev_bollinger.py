@@ -11,6 +11,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest
 MANIFEST = ModelManifest(
     id="meanrev_bollinger",
     family="mean_reversion",
+    sleeve="mean_reversion",
     one_liner="Long on a lower-band touch, flat back at the midline.",
     economic_rationale="A close outside a volatility band is a statistical extreme likely to fade.",
     data_needs=DataNeeds(instruments=1, kind="OHLCV"),

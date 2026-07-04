@@ -11,6 +11,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest
 MANIFEST = ModelManifest(
     id="meanrev_rsi",
     family="mean_reversion",
+    sleeve="mean_reversion",
     one_liner="Long once RSI is oversold, flat once RSI is overbought.",
     economic_rationale="An oversold reading reflects overextended selling likely to mean-revert.",
     data_needs=DataNeeds(instruments=1, kind="OHLCV"),

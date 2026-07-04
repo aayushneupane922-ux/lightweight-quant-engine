@@ -31,20 +31,32 @@ from lqe.models.adapters.statsmodels_pairs_adapter import StatsmodelsPairsAdapte
 from lqe.models.adapters.supervised_signal_adapter import SupervisedSignalAdapter
 from lqe.models.base import Strategy
 from lqe.models.catalog import IntakeResult, ModelCatalog
-from lqe.models.manifest import DataNeeds, Family, ModelManifest
+from lqe.models.manifest import DataNeeds, Family, ModelManifest, Sleeve
 from lqe.models.plugins import naive_always_long, trend_ma_cross
 
-# (preset, family, one_liner) for the native indicator presets.
-_PRESET_META: dict[str, tuple[Family, str]] = {
-    "macd_trend": ("trend", "Long while MACD is above its signal line."),
-    "donchian_breakout": ("trend", "Enter when price clears the N-bar channel."),
-    "adx_trend": ("trend", "MA cross gated by ADX trend strength."),
-    "tsmom": ("momentum", "Long when trailing N-bar return is positive."),
-    "roc_momentum": ("momentum", "Long once N-bar rate-of-change clears a threshold."),
-    "zscore_reversion": ("mean_reversion", "Long on a deep rolling z-score dip."),
-    "bollinger_fade": ("mean_reversion", "Long on a lower-band touch, flat at the midline."),
-    "rsi_fade": ("mean_reversion", "Long once RSI is oversold."),
-    "vol_breakout": ("volatility", "Long once realized vol expands past baseline."),
+# (preset, family, sleeve, one_liner) for the native indicator presets.
+# docs/14 §2 (v4): `sleeve` is the return-driver grouping the diversification
+# score measures against -- coarser than `family` (e.g. "trend" and
+# "momentum" are both sleeve `trend_momentum`, since they're expected to be
+# highly correlated and count as ~1 effective bet, per docs/14's own sleeve A).
+_PRESET_META: dict[str, tuple[Family, Sleeve, str]] = {
+    "macd_trend": ("trend", "trend_momentum", "Long while MACD is above its signal line."),
+    "donchian_breakout": (
+        "trend", "trend_momentum", "Enter when price clears the N-bar channel."
+    ),
+    "adx_trend": ("trend", "trend_momentum", "MA cross gated by ADX trend strength."),
+    "tsmom": ("momentum", "trend_momentum", "Long when trailing N-bar return is positive."),
+    "roc_momentum": (
+        "momentum", "trend_momentum", "Long once N-bar rate-of-change clears a threshold."
+    ),
+    "zscore_reversion": (
+        "mean_reversion", "mean_reversion", "Long on a deep rolling z-score dip."
+    ),
+    "bollinger_fade": (
+        "mean_reversion", "mean_reversion", "Long on a lower-band touch, flat at the midline."
+    ),
+    "rsi_fade": ("mean_reversion", "mean_reversion", "Long once RSI is oversold."),
+    "vol_breakout": ("volatility", "volatility", "Long once realized vol expands past baseline."),
 }
 
 # preset -> list of parameter dicts to enumerate (each becomes one model).
@@ -82,9 +94,11 @@ _PRESET_GRID: dict[str, list[dict[str, float]]] = {
 }
 
 
-def _native_manifest(model_id: str, family: Family, one_liner: str) -> ModelManifest:
+def _native_manifest(
+    model_id: str, family: Family, sleeve: Sleeve, one_liner: str
+) -> ModelManifest:
     return ModelManifest(
-        id=model_id, family=family, one_liner=one_liner,
+        id=model_id, family=family, sleeve=sleeve, one_liner=one_liner,
         economic_rationale=(
             "A config of a vetted native indicator rule; the gate judges it, not breadth."
         ),
@@ -94,9 +108,11 @@ def _native_manifest(model_id: str, family: Family, one_liner: str) -> ModelMani
     )
 
 
-def _heavy_manifest(model_id: str, family: Family, one_liner: str, lib: str) -> ModelManifest:
+def _heavy_manifest(
+    model_id: str, family: Family, sleeve: Sleeve, one_liner: str, lib: str
+) -> ModelManifest:
     return ModelManifest(
-        id=model_id, family=family, one_liner=one_liner,
+        id=model_id, family=family, sleeve=sleeve, one_liner=one_liner,
         economic_rationale=(
             f"Advanced statistical model via {lib}; unproven until the gate passes it."
         ),
@@ -109,12 +125,12 @@ def _heavy_manifest(model_id: str, family: Family, one_liner: str, lib: str) -> 
 def _native_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
     entries: list[tuple[ModelManifest, Callable[[], Strategy]]] = []
     for preset, grid in _PRESET_GRID.items():
-        family, one_liner = _PRESET_META[preset]
+        family, sleeve, one_liner = _PRESET_META[preset]
         for i, params in enumerate(grid):
             model_id = f"{preset}_{i}"
             entries.append(
                 (
-                    _native_manifest(model_id, family, one_liner),
+                    _native_manifest(model_id, family, sleeve, one_liner),
                     _native_factory(symbol, preset, model_id, params),
                 )
             )
@@ -123,7 +139,7 @@ def _native_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], St
         mid = f"trend_ma_cross_{fast}_{slow}"
         entries.append(
             (
-                _native_manifest(mid, "trend", "Fast/slow SMA cross."),
+                _native_manifest(mid, "trend", "trend_momentum", "Fast/slow SMA cross."),
                 _ma_cross_factory(symbol, mid, fast, slow),
             )
         )
@@ -161,30 +177,35 @@ def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Str
     def factory(cls: Any, **kw: Any) -> Callable[[], Strategy]:
         return lambda: cls(symbol=symbol, **kw)
 
-    # (id, family, one_liner, lib, factory)
-    specs: list[tuple[str, Family, str, str, Callable[[], Strategy]]] = [
-        ("pairs_ols", "pairs", "OLS-hedge spread reversion.", "statsmodels",
+    # (id, family, sleeve, one_liner, lib, factory)
+    specs: list[tuple[str, Family, Sleeve, str, str, Callable[[], Strategy]]] = [
+        ("pairs_ols", "pairs", "stat_arb", "OLS-hedge spread reversion.", "statsmodels",
          factory(StatsmodelsPairsAdapter, name="pairs_ols", hedge_closes=hedge)),
-        ("vol_garch", "volatility", "GARCH(1,1) vol-regime filter.", "arch",
+        ("vol_garch", "volatility", "volatility", "GARCH(1,1) vol-regime filter.", "arch",
          factory(ArchVolAdapter, name="vol_garch")),
-        ("regime_hmm", "regime", "2-state Gaussian HMM regime switch.", "hmmlearn",
-         factory(HmmRegimeAdapter, name="regime_hmm")),
-        ("regime_changepoint", "regime", "Change-point segment regime.", "ruptures",
-         factory(ChangePointAdapter, name="regime_changepoint")),
-        ("portfolio_mvo", "portfolio", "Max-Sharpe mean-variance weight.", "PyPortfolioOpt",
+        ("regime_hmm", "regime", "regime_overlay", "2-state Gaussian HMM regime switch.",
+         "hmmlearn", factory(HmmRegimeAdapter, name="regime_hmm")),
+        ("regime_changepoint", "regime", "regime_overlay", "Change-point segment regime.",
+         "ruptures", factory(ChangePointAdapter, name="regime_changepoint")),
+        ("portfolio_mvo", "portfolio", "allocator", "Max-Sharpe mean-variance weight.",
+         "PyPortfolioOpt",
          factory(PyPortfolioOptAdapter, name="portfolio_mvo", universe_closes=universe)),
-        ("portfolio_hrp", "portfolio", "Hierarchical risk parity weight.", "skfolio",
+        ("portfolio_hrp", "portfolio", "allocator", "Hierarchical risk parity weight.",
+         "skfolio",
          factory(SkfolioOptimizerAdapter, name="portfolio_hrp", universe_closes=universe)),
-        ("riskalloc_rp", "risk_allocation", "Risk-parity allocation.", "riskfolio-lib",
+        ("riskalloc_rp", "risk_allocation", "allocator", "Risk-parity allocation.",
+         "riskfolio-lib",
          factory(RiskfolioAdapter, name="riskalloc_rp", universe_closes=universe)),
-        ("supervised_logit", "supervised", "Logistic next-bar direction (gated).", "scikit-learn",
+        ("supervised_logit", "supervised", "ml_signal", "Logistic next-bar direction (gated).",
+         "scikit-learn",
          factory(SupervisedSignalAdapter, name="supervised_logit", kind="logistic")),
-        ("supervised_gbm", "supervised", "Gradient-boosted direction (gated).", "lightgbm",
+        ("supervised_gbm", "supervised", "ml_signal", "Gradient-boosted direction (gated).",
+         "lightgbm",
          factory(SupervisedSignalAdapter, name="supervised_gbm", kind="gbm")),
     ]
     return [
-        (_heavy_manifest(mid, family, one_liner, lib), build)
-        for mid, family, one_liner, lib, build in specs
+        (_heavy_manifest(mid, family, sleeve, one_liner, lib), build)
+        for mid, family, sleeve, one_liner, lib, build in specs
     ]
 
 

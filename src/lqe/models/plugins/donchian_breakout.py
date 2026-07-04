@@ -12,6 +12,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest
 MANIFEST = ModelManifest(
     id="donchian_breakout",
     family="trend",
+    sleeve="trend_momentum",
     one_liner="Enter when price clears the N-bar channel.",
     economic_rationale="Breakouts can extend when order flow is one-sided.",
     data_needs=DataNeeds(instruments=1, kind="OHLCV"),

@@ -12,6 +12,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest
 MANIFEST = ModelManifest(
     id="meanrev_zscore",
     family="mean_reversion",
+    sleeve="mean_reversion",
     one_liner="Long on a deep rolling z-score dip, flat once it reverts.",
     economic_rationale=(
         "Prices oscillate around a local mean absent a regime change; a large "

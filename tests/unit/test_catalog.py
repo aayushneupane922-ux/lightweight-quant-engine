@@ -14,6 +14,7 @@ def _manifest(**overrides: object) -> ModelManifest:
     defaults: dict[str, object] = {
         "id": "test_model",
         "family": "trend",
+        "sleeve": "trend_momentum",
         "one_liner": "a test model",
         "economic_rationale": "n/a - unit test fixture",
         "data_needs": DataNeeds(instruments=1, kind="OHLCV"),

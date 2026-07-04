@@ -11,6 +11,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest
 MANIFEST = ModelManifest(
     id="trend_macd_cross",
     family="trend",
+    sleeve="trend_momentum",
     one_liner="Long while MACD is above its signal line, flat otherwise.",
     economic_rationale=(
         "Trend-following: momentum tends to persist past the point where "

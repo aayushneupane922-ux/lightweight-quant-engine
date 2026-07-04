@@ -96,6 +96,25 @@ def test_the_deliberately_weak_control_is_present() -> None:
     assert any(e.manifest.id == "naive_always_long" for e in catalog.all())
 
 
+def test_every_admitted_model_carries_a_sleeve_tag() -> None:
+    # docs/14 §3 (v4): every model must be tagged with its return-driver
+    # sleeve so the diversification score is computable; "control" is the
+    # one deliberate exception (naive_always_long isn't a diversification bet).
+    catalog, _ = build_scaled_catalog(SYMBOL)
+    for entry in catalog.all():
+        assert entry.manifest.sleeve, f"{entry.manifest.id} has no sleeve tag"
+
+
+def test_sleeves_span_multiple_return_drivers_not_just_trend() -> None:
+    # docs/14 §1: diversification lives across sleeves -- the pre-v4 catalog
+    # is trend/momentum/mean-reversion/volatility-heavy by construction (its
+    # own §6/§11 build order), so this only pins that *today's* sleeve mix
+    # isn't a single monoculture; v4's M23 sleeves add the real diversifiers.
+    catalog, _ = build_scaled_catalog(SYMBOL)
+    sleeves = {e.manifest.sleeve for e in catalog.all()}
+    assert sleeves >= {"trend_momentum", "mean_reversion", "volatility"}
+
+
 def test_admitted_models_run_a_deterministic_backtest() -> None:
     catalog, _ = build_scaled_catalog(SYMBOL)
     bars = _bars()

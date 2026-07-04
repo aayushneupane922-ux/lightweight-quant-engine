@@ -25,7 +25,7 @@ from lqe.models.adapters.riskfolio_adapter import RiskfolioAdapter
 from lqe.models.adapters.skfolio_adapter import SkfolioOptimizerAdapter
 from lqe.models.adapters.statsmodels_pairs_adapter import StatsmodelsPairsAdapter
 from lqe.models.catalog import intake_check
-from lqe.models.manifest import DataNeeds, Family, ModelManifest
+from lqe.models.manifest import DataNeeds, Family, ModelManifest, Sleeve
 
 SYMBOL = "BTC-USDT"
 UNIVERSE = {"BTC-USDT": [100.0, 101.0, 102.0, 103.0], "ETH-USDT": [10.0, 10.5, 10.2, 10.8]}
@@ -41,9 +41,11 @@ def _absent(*import_names: str) -> pytest.MarkDecorator:
     )
 
 
-def _manifest(model_id: str, family: Family, lib: str) -> ModelManifest:
+def _manifest(
+    model_id: str, family: Family, lib: str, sleeve: Sleeve = "stat_arb"
+) -> ModelManifest:
     return ModelManifest(
-        id=model_id, family=family, one_liner="heavy-lib adapter smoke test",
+        id=model_id, family=family, sleeve=sleeve, one_liner="heavy-lib adapter smoke test",
         economic_rationale="n/a - intake/quarantine smoke test only",
         data_needs=DataNeeds(instruments=2, kind="OHLCV"), oss_libs=[lib],
         params_schema={}, failure_modes=["requires the optional 'models' extra"],

@@ -44,6 +44,14 @@ def test_default_catalog_has_at_least_ten_models_across_four_families() -> None:
     assert catalog.quarantined() == []
 
 
+def test_every_default_catalog_model_carries_a_sleeve_tag() -> None:
+    # docs/14 §3 (v4): every model needs a sleeve tag for the diversification
+    # score to be computable, including the pre-v4 default catalog.
+    catalog, _ = build_default_catalog(SYMBOL)
+    for entry in catalog.all():
+        assert entry.manifest.sleeve, f"{entry.manifest.id} has no sleeve tag"
+
+
 def test_every_default_catalog_model_completes_a_real_backtest() -> None:
     catalog, _ = build_default_catalog(SYMBOL)
     bars = _bars(300)

@@ -12,6 +12,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest
 MANIFEST = ModelManifest(
     id="momentum_tsmom",
     family="momentum",
+    sleeve="trend_momentum",
     one_liner="Long when trailing N-bar return is positive, flat otherwise.",
     economic_rationale=(
         "Time-series momentum: assets that have trended tend to keep trending "

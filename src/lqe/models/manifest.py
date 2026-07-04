@@ -16,6 +16,20 @@ Family = Literal[
     "regime", "portfolio", "risk_allocation", "supervised", "online",
 ]
 
+# docs/14 §1-2 (v4): the return-driver "sleeve" a model belongs to, for
+# measuring diversification -- a different, coarser cut than `Family`.
+# Models in the same sleeve are expected to be highly correlated (count as
+# ~1 effective bet); diversification lives *across* sleeves. `control` is
+# not one of docs/14's 13 lettered sleeves -- it's this catalog's
+# deliberately-weak/cautionary model (`naive_always_long`), which isn't a
+# return-driver bet at all and must never count toward any sleeve's size.
+Sleeve = Literal[
+    "trend_momentum", "mean_reversion", "cross_sectional", "stat_arb",
+    "volatility", "carry_basis", "breakout_structure", "seasonality",
+    "regime_overlay", "microstructure", "cross_exchange", "ml_signal",
+    "allocator", "control",
+]
+
 _FROZEN = ConfigDict(frozen=True)
 
 
@@ -37,6 +51,7 @@ class ModelManifest(BaseModel):
 
     id: str
     family: Family
+    sleeve: Sleeve
     one_liner: str
     economic_rationale: str
     data_needs: DataNeeds

@@ -12,6 +12,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest
 MANIFEST = ModelManifest(
     id="vol_breakout",
     family="volatility",
+    sleeve="volatility",
     one_liner="Long once realized vol expands past baseline, flat once it contracts back.",
     economic_rationale=(
         "A volatility regime shift often accompanies a directional move as new "

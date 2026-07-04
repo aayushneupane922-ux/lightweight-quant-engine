@@ -12,6 +12,7 @@ from lqe.models.manifest import DataNeeds, ModelManifest
 MANIFEST = ModelManifest(
     id="trend_adx_filter",
     family="trend",
+    sleeve="trend_momentum",
     one_liner="MA cross, but only acted on when ADX confirms a real trend.",
     economic_rationale=(
         "MA crosses are noisy in choppy regimes; gating on trend strength (ADX) "

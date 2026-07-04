@@ -27,7 +27,7 @@ START = datetime(2026, 1, 1, tzinfo=UTC)
 
 def _manifest(model_id: str) -> ModelManifest:
     return ModelManifest(
-        id=model_id, family="trend", one_liner="test fixture",
+        id=model_id, family="trend", sleeve="trend_momentum", one_liner="test fixture",
         economic_rationale="n/a - test fixture only",
         data_needs=DataNeeds(instruments=1, kind="OHLCV"), oss_libs=["own"],
         params_schema={}, failure_modes=["n/a"],

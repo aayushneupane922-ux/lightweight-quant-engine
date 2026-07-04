@@ -82,6 +82,7 @@ class TrendMaCross:
 MANIFEST = ModelManifest(
     id="trend_ma_cross",
     family="trend",
+    sleeve="trend_momentum",
     one_liner="Long on a fast/slow SMA bullish cross, flat on the bearish cross.",
     economic_rationale=(
         "The oldest trend signal: a faster average crossing a slower one "

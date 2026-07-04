@@ -268,10 +268,17 @@ def _synthetic_allocator_closes(symbol: Symbol) -> dict[str, list[float]]:
     # given. This path was never actually exercised before docs/12 M13
     # installed skfolio/PyPortfolioOpt/riskfolio-lib -- all 3 were quarantined
     # until then, so the 2-asset universe's HRP incompatibility was latent.
-    return {
-        symbol: [1.0, 2.0, 3.0, 4.0], "ETH-USDT": [1.0, 1.1, 1.2, 1.3],
-        "SOL-USDT": [1.0, 0.95, 1.05, 1.0],
-    }
+    #
+    # V5 M27 live follow-up: `symbol` can now legitimately be "ETH-USDT"
+    # itself (a `LiveSession` trading it as its own book, not just as
+    # another symbol's sibling) -- a literal `{symbol: ..., "ETH-USDT":
+    # ...}` dict would then collide on that key and silently collapse to
+    # 2 entries, reintroducing the exact HRP crash above. Picking 2 "other"
+    # placeholder symbols that always exclude `symbol` keeps this at 3
+    # distinct assets regardless of which symbol is asking.
+    others = [s for s in ("ETH-USDT", "SOL-USDT", "BNB-USDT") if s != symbol][:2]
+    other_series = [[1.0, 1.1, 1.2, 1.3], [1.0, 0.95, 1.05, 1.0]]
+    return {symbol: [1.0, 2.0, 3.0, 4.0], **dict(zip(others, other_series, strict=True))}
 
 
 def _inverse_vol_weights(universe: Mapping[str, Sequence[float]]) -> Mapping[str, float]:
@@ -432,6 +439,13 @@ def _stat_arb_entries(
 ) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
     # V5 M27: real sibling symbols, not `_synthetic_universe`'s fake keys.
     others = [sym for sym in universe if sym != symbol]
+    # V5 M27 live follow-up: a `LiveSession` running a small (1- or
+    # 2-symbol) universe has too few real siblings for a distance-pairs
+    # partner + a separate lead-lag leader -- no-op (zero stat-arb entries)
+    # rather than crash, same "insufficient data -> inert/absent, never a
+    # crash" philosophy as `Universe`'s missing-symbol handling.
+    if len(others) < 2:
+        return []
     partner, leader = others[0], others[1]
     basket = tuple(others)
 

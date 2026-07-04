@@ -482,7 +482,7 @@ two separate `lqe live` invocations.
 **Recipe:**
 ```
 lqe live \
-  --symbol BTC-USDT --timeframe 1m --poll-seconds 60 \
+  --symbols BTC-USDT,ETH-USDT,SOL-USDT,BNB-USDT,XRP-USDT --timeframe 1m --poll-seconds 60 \
   --lookback-bars 300 --autonomy-every 5 --n-trials 8 \
   --llm --llm-model llama3.2:3b --out runs/live-session.jsonl --port 8137
 ```

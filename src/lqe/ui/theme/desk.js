@@ -425,7 +425,8 @@
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Starting…'; }
     var resumeChecked = document.getElementById("resume-check");
     var body = {
-      adapter: "ccxt", exchange: "binance", symbol: "BTC-USDT", timeframe: "1m",
+      adapter: "ccxt", exchange: "binance",
+      symbols: ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BNB-USDT", "XRP-USDT"], timeframe: "1m",
       poll_seconds: 60, lookback_bars: 300, starting_cash: 10000,
       autonomy_every: 5, n_trials: 8, min_periods: 200, use_llm: false,
     };

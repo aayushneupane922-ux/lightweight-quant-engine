@@ -165,7 +165,7 @@ def test_start_live_runs_and_stop_live_halts_it(tmp_path: Path) -> None:
     manager = _manager(tmp_path)
 
     started = manager.start_live(
-        adapter="csv", exchange="demo", csv_path=str(csv_path), symbol=SYMBOL, timeframe="1m",
+        adapter="csv", exchange="demo", csv_path=str(csv_path), symbols=[SYMBOL], timeframe="1m",
         poll_seconds=0.05, lookback_bars=100, starting_cash=10_000.0, autonomy_every=1000,
         n_trials=1, min_periods=50, use_llm=False, llm_model="llama3.2:3b", out_path=None,
     )
@@ -191,12 +191,12 @@ def test_start_live_is_a_noop_while_already_running(tmp_path: Path) -> None:
     csv_path = _fixture_csv(tmp_path)
     manager = _manager(tmp_path)
     assert manager.start_live(
-        adapter="csv", exchange="demo", csv_path=str(csv_path), symbol=SYMBOL, timeframe="1m",
+        adapter="csv", exchange="demo", csv_path=str(csv_path), symbols=[SYMBOL], timeframe="1m",
         poll_seconds=0.05, lookback_bars=100, starting_cash=10_000.0, autonomy_every=1000,
         n_trials=1, min_periods=50, use_llm=False, llm_model="llama3.2:3b", out_path=None,
     )
     second = manager.start_live(
-        adapter="csv", exchange="demo", csv_path=str(csv_path), symbol=SYMBOL, timeframe="1m",
+        adapter="csv", exchange="demo", csv_path=str(csv_path), symbols=[SYMBOL], timeframe="1m",
         poll_seconds=0.05, lookback_bars=100, starting_cash=10_000.0, autonomy_every=1000,
         n_trials=1, min_periods=50, use_llm=False, llm_model="llama3.2:3b", out_path=None,
     )

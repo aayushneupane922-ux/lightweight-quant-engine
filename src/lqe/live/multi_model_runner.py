@@ -45,6 +45,7 @@ from lqe.models.catalog import CatalogEntry
 from lqe.portfolio.accounting import Accounting
 from lqe.portfolio.sizing import FixedFractionalSizer
 from lqe.risk.model import RiskModel
+from lqe.risk.portfolio_context import PortfolioContext
 from lqe.risk.reconciliation import FillRecord, reconcile
 from lqe.risk.rules import PortfolioState
 
@@ -65,6 +66,13 @@ class ModelBook:
     day_anchor: date | None = None
     order_timestamps: list = field(default_factory=list)  # type: ignore[type-arg]
     intent_keys: set[str] = field(default_factory=set)
+    # V5 M27 live follow-up: this book's return-driver sleeve, so it can look
+    # up its own slice of a shared cross-book `PortfolioContext` (see
+    # `LiveMultiModelRunner._portfolio_state`). `None` for a book built
+    # outside `build_fleet` (or a manifest with no sleeve) -- the sleeve-
+    # concentration risk rule is then a no-op for it, same as a symbol
+    # running with no `portfolio_context` at all.
+    sleeve: str | None = None
 
 
 def build_fleet(
@@ -91,6 +99,7 @@ def build_fleet(
             ),
             peak_equity=starting_cash,
             day_start_equity=starting_cash,
+            sleeve=entry.manifest.sleeve,
         )
         for entry in entries
     ]
@@ -103,28 +112,64 @@ class LiveMultiModelRunner:
     `process_bar` once per new live (or replayed) bar."""
 
     def __init__(
-        self, *, engine: Engine, fleet: list[ModelBook], symbol: Symbol, risk_model: RiskModel
+        self,
+        *,
+        engine: Engine,
+        fleet: list[ModelBook],
+        symbol: Symbol,
+        risk_model: RiskModel,
+        # V5 M27 live follow-up: shared, mutable cross-book/cross-symbol
+        # totals a `LiveSession` refreshes once per `Universe` bar-cycle;
+        # `None` in the ordinary single-symbol case, which leaves
+        # `PortfolioState.portfolio_equity`/etc. `None` too, so
+        # `check_portfolio_gross_exposure`/`check_sleeve_concentration`
+        # stay no-ops -- mirrors `backtest.make_session.Session`.
+        portfolio_context: PortfolioContext | None = None,
     ) -> None:
         self.engine = engine
         self.fleet = fleet
         self.symbol = symbol
         self.risk_model = risk_model
+        self.portfolio_context = portfolio_context
         self._started = False
         self._fleet_peak_equity = sum((b.accounting.cash for b in fleet), Decimal("0"))
         self._fleet_day_anchor: date | None = None
         self._fleet_day_start_equity = self._fleet_peak_equity
+        self._universe_closes: dict[Symbol, Decimal] = {}
 
     def start(self) -> None:
-        ctx = Context(symbol=self.symbol, position_qty=Decimal("0"))
+        ctx = Context(
+            symbol=self.symbol,
+            position_qty=Decimal("0"),
+            universe_closes=dict(self._universe_closes),
+        )
         for book in self.fleet:
             book.strategy.on_start(ctx)
         self._started = True
 
     def process_bar(self, bar: MarketEvent) -> None:
+        # `bar` has already been ticked+emitted by the caller (`LiveSession`,
+        # sharing one `Engine`/tick across every symbol's runner) -- mirrors
+        # `backtest.make_session.Session._on_bar`. Never call this directly
+        # unless `bar` has already been ticked and emitted.
         if not self._started:
             self.start()
-        self.engine.tick()
-        self.engine.emit("MarketEvent", bar)
+        self._universe_closes[bar.symbol] = bar.c
+
+        if bar.symbol != self.symbol:
+            # A strategy may update its own internal ranking/universe state
+            # from another symbol's bar, but can only ever act (place an
+            # order) on its own runner's symbol -- discarding any signal
+            # here preserves the no-look-ahead guarantee, same as the
+            # backtest session's foreign-bar branch.
+            for book in self.fleet:
+                ctx = Context(
+                    symbol=self.symbol,
+                    position_qty=book.accounting.position_qty(self.symbol),
+                    universe_closes=dict(self._universe_closes),
+                )
+                book.strategy.on_market(bar, ctx)
+            return
 
         for book in self.fleet:
             self._resolve_working_orders(book, bar)
@@ -152,7 +197,9 @@ class LiveMultiModelRunner:
             )
             book.broker.mark_filled(order.order_id, filled_qty=fill.fill_qty, status=status)
             ctx = Context(
-                symbol=self.symbol, position_qty=book.accounting.position_qty(self.symbol)
+                symbol=self.symbol,
+                position_qty=book.accounting.position_qty(self.symbol),
+                universe_closes=dict(self._universe_closes),
             )
             book.strategy.on_fill(fill, ctx)
 
@@ -165,7 +212,11 @@ class LiveMultiModelRunner:
         book.peak_equity = max(book.peak_equity, equity)
 
     def _process_signals(self, book: ModelBook, bar: MarketEvent) -> None:
-        ctx = Context(symbol=self.symbol, position_qty=book.accounting.position_qty(self.symbol))
+        ctx = Context(
+            symbol=self.symbol,
+            position_qty=book.accounting.position_qty(self.symbol),
+            universe_closes=dict(self._universe_closes),
+        )
         signals = book.strategy.on_market(bar, ctx)
         for signal in signals:
             self.engine.emit("SignalEvent", signal)
@@ -208,6 +259,19 @@ class LiveMultiModelRunner:
             recent_intent_keys=frozenset(book.intent_keys),
             strategy_notional_used=position_qty * bar.c,
             open_orders=len(book.broker.working_orders()),
+            portfolio_equity=(
+                self.portfolio_context.equity if self.portfolio_context is not None else None
+            ),
+            portfolio_gross_notional=(
+                self.portfolio_context.gross_notional
+                if self.portfolio_context is not None
+                else None
+            ),
+            sleeve_notional_used=(
+                self.portfolio_context.sleeve_notional(book.sleeve)
+                if self.portfolio_context is not None
+                else None
+            ),
         )
 
     # -- fleet aggregate ------------------------------------------------------

@@ -67,7 +67,7 @@ def test_lqe_live_runs_bounded_against_a_csv_fixture(
             "--adapter", "csv",
             "--csv-path", str(csv_path),
             "--exchange", "demo",
-            "--symbol", SYMBOL,
+            "--symbols", SYMBOL,
             "--timeframe", "1m",
             "--lookback-bars", "100",
             "--poll-seconds", "0",
@@ -84,11 +84,18 @@ def test_lqe_live_runs_bounded_against_a_csv_fixture(
 
     assert exit_code == 0
     # the exact catalog size grows as new sleeves land (docs/14 v4 M23+) --
-    # assert the *shape* (N/N, i.e. nothing quarantined on this machine,
-    # since the full 'models' extra is installed), not a hardcoded N.
+    # assert the *shape*, not a hardcoded N. `--adapter csv` only ever runs
+    # exactly one symbol (a lone CsvReplayAdapter can't feed more), so the
+    # honest, real universe passed to build_scaled_catalog (V5 M27 live
+    # follow-up) has no sibling symbols -- stat_arb_johansen needs >=1 real
+    # basket member and transparently quarantines itself here (see
+    # catalog_scale.py's `_heavy_entries`/JohansenBasketAdapter), same
+    # "insufficient real data -> honest quarantine, never fake data" honesty
+    # this whole milestone is about. So: at most that one quarantine here.
     match = re.search(r"fleet: (\d+)/(\d+) models admitted", out)
     assert match is not None, out
-    assert match.group(1) == match.group(2)
+    admitted, total = int(match.group(1)), int(match.group(2))
+    assert total - admitted <= 1, out
     # exact count can be 1-2 off real wall-clock skew between fixture
     # generation and the CLI's own now() check -- assert the shape, not
     # an exact count.
@@ -113,7 +120,7 @@ def test_lqe_live_resumes_byte_identical_state_from_the_same_out_path(
         "--adapter", "csv",
         "--csv-path", str(csv_path),
         "--exchange", "demo",
-        "--symbol", SYMBOL,
+        "--symbols", SYMBOL,
         "--timeframe", "1m",
         "--lookback-bars", "100",
         "--poll-seconds", "0",
@@ -158,7 +165,7 @@ def test_lqe_live_a_fresh_out_path_starts_flat(
             "live",
             "--adapter", "csv",
             "--csv-path", str(csv_path),
-            "--symbol", SYMBOL,
+            "--symbols", SYMBOL,
             "--lookback-bars", "100",
             "--poll-seconds", "0",
             "--max-polls", "0",
@@ -181,7 +188,7 @@ def test_lqe_live_requires_csv_path_with_csv_adapter(tmp_path: Path) -> None:
         [
             "live",
             "--adapter", "csv",
-            "--symbol", SYMBOL,
+            "--symbols", SYMBOL,
             "--port", "0",
             "--no-browser",
             "--max-polls", "0",

@@ -377,11 +377,12 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
         if data.jobs is None:
             return JSONResponse({"error": "jobs not enabled on this session"}, status_code=404)
         body = await request.json()
+        default_symbols = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BNB-USDT", "XRP-USDT"]
         started = data.jobs.start_live(
             adapter=str(body.get("adapter", "ccxt")),
             exchange=str(body.get("exchange", "binance")),
             csv_path=body.get("csv_path"),
-            symbol=str(body.get("symbol", "BTC-USDT")),
+            symbols=[str(s) for s in body.get("symbols", default_symbols)],
             timeframe=str(body.get("timeframe", "1m")),  # type: ignore[arg-type]
             poll_seconds=float(body.get("poll_seconds", 60.0)),
             lookback_bars=int(body.get("lookback_bars", 300)),

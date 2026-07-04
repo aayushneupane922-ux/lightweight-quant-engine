@@ -68,3 +68,44 @@ class CsvReplayAdapter:
                     v=float(row["volume"]),
                     source_version=self._source_version,
                 )
+
+
+class CsvReplayUniverseAdapter:
+    """A multi-symbol test fixture (V5 M27 live follow-up): one
+    `CsvReplayAdapter` per symbol under the hood, merged and `ts_open`-sorted
+    the same way `CcxtMarketDataAdapter.stream()` interleaves a real
+    multi-symbol fetch. `MultiSymbolLiveFeed` shares ONE adapter object
+    across N per-symbol `LiveFeed`s, and a lone `CsvReplayAdapter` only ever
+    knows its own symbol -- this exists purely so multi-symbol live/CLI
+    tests can replay a deterministic offline fixture without a real
+    exchange. The CLI's `--csv-path` flag deliberately stays single-path/
+    single-symbol (real multi-symbol live is a `--adapter ccxt` concern) --
+    this class isn't wired into `cli.py`/`ops/jobs.py` at all.
+    """
+
+    def __init__(self, paths: dict[Symbol, str | Path], *, exchange: str, timeframe: Timeframe):
+        self._adapters = {
+            symbol: CsvReplayAdapter(
+                path, exchange=exchange, symbol=symbol, timeframe=timeframe
+            )
+            for symbol, path in paths.items()
+        }
+
+    def capabilities(self) -> DataCapabilities:
+        return DataCapabilities(bars=True)
+
+    def stream(
+        self,
+        symbols: list[Symbol],
+        tf: Timeframe,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> Iterator[MarketEvent]:
+        all_bars = [
+            bar
+            for symbol in symbols
+            if symbol in self._adapters
+            for bar in self._adapters[symbol].stream([symbol], tf, start, end)
+        ]
+        all_bars.sort(key=lambda bar: bar.ts_open)
+        yield from all_bars

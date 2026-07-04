@@ -347,7 +347,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     live_parser.add_argument("--exchange", default="binance")
     live_parser.add_argument("--csv-path", default=None, help="Required when --adapter csv")
-    live_parser.add_argument("--symbol", default="BTC-USDT")
+    live_parser.add_argument(
+        "--symbols", default="BTC-USDT,ETH-USDT,SOL-USDT,BNB-USDT,XRP-USDT",
+        help="Comma-separated symbols to run as one synchronized universe (docs/15 M27): one "
+        "LiveMultiModelRunner per symbol, sharing one engine/audit log/kill switch and one "
+        "cross-book PortfolioContext. --adapter csv only ever feeds one --csv-path's symbol, "
+        "so it requires exactly one symbol here.",
+    )
     live_parser.add_argument("--timeframe", default="1m")
     live_parser.add_argument("--poll-seconds", type=float, default=60.0)
     live_parser.add_argument("--lookback-bars", type=int, default=300)
@@ -544,26 +550,37 @@ def _cmd_live(args: argparse.Namespace) -> int:
     warnings.filterwarnings("ignore", module="arch.*")
     warnings.filterwarnings("ignore", module="statsmodels.*")
 
-    symbol = args.symbol
+    symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+    if not symbols:
+        print("error: --symbols must name at least one symbol")
+        return 1
 
     data_adapter: MarketDataAdapter
     if args.adapter == "csv":
         if not args.csv_path:
             print("error: --csv-path is required with --adapter csv")
             return 1
+        if len(symbols) != 1:
+            print(
+                "error: --adapter csv replays exactly one --csv-path, which can only ever "
+                f"feed one symbol -- got --symbols {args.symbols!r}. Pass a single symbol, or "
+                "use --adapter ccxt for a real multi-symbol universe."
+            )
+            return 1
         data_adapter = CsvReplayAdapter(
-            Path(args.csv_path), exchange=args.exchange, symbol=symbol, timeframe=args.timeframe
+            Path(args.csv_path), exchange=args.exchange, symbol=symbols[0],
+            timeframe=args.timeframe,
         )
     else:
         data_adapter = CcxtMarketDataAdapter(args.exchange)
 
-    print(f"lqe live: {args.exchange} {symbol} {args.timeframe} (paper-only)")
+    print(f"lqe live: {args.exchange} {', '.join(symbols)} {args.timeframe} (paper-only)")
     kill_switch = KillSwitch(Path(args.kill_switch)) if args.kill_switch else KillSwitch.in_memory()
     session = LiveSession(
         adapter=data_adapter,
         kill_switch=kill_switch,
         config=LiveSessionConfig(
-            symbol=symbol, timeframe=args.timeframe, poll_seconds=args.poll_seconds,
+            symbols=symbols, timeframe=args.timeframe, poll_seconds=args.poll_seconds,
             lookback_bars=args.lookback_bars, starting_cash=Decimal(str(args.starting_cash)),
             autonomy_every=args.autonomy_every, n_trials=args.n_trials,
             min_periods=args.min_periods, use_llm=args.llm, llm_model=args.llm_model,
@@ -585,9 +602,10 @@ def _cmd_live(args: argparse.Namespace) -> int:
             "--lookback-bars enough to cover the gap."
         )
         return 1
+    total_results = sum(len(results) for results in session.catalog_results.values())
     print(
-        f"fleet: {len(session.catalog.all())}/{len(session.catalog_results)} models admitted "
-        f"(rest transparently quarantined)"
+        f"fleet: {len(session.catalog.all())}/{total_results} models admitted per symbol "
+        f"(rest transparently quarantined) across {len(symbols)} symbols"
     )
     if session.resumed:
         print(f"resumed from {args.out}: {len(session.bars_so_far)} historical bars verified")
@@ -614,7 +632,7 @@ def _cmd_live(args: argparse.Namespace) -> int:
         return False
 
     print(
-        f"polling {args.exchange} every {args.poll_seconds:.0f}s for new {symbol} "
+        f"polling {args.exchange} every {args.poll_seconds:.0f}s for new {', '.join(symbols)} "
         f"{args.timeframe} bars... Ctrl+C to stop."
     )
     try:

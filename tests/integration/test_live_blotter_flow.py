@@ -70,7 +70,7 @@ def test_live_fleet_produces_real_fills_that_reach_the_blotter(tmp_path: Path) -
     manager = JobManager(desk_data=desk, kill_switch=kill_switch)
 
     started = manager.start_live(
-        adapter="csv", exchange="demo", csv_path=str(csv_path), symbol=SYMBOL, timeframe="1m",
+        adapter="csv", exchange="demo", csv_path=str(csv_path), symbols=[SYMBOL], timeframe="1m",
         poll_seconds=0.02, lookback_bars=150, starting_cash=10_000.0, autonomy_every=1000,
         n_trials=1, min_periods=50, use_llm=False, llm_model="llama3.2:3b", out_path=None,
     )

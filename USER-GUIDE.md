@@ -117,16 +117,22 @@ rule-based narrator if it's absent — no network dependency).
 Runs the whole admitted catalog against continuously-polled real (or
 replayed) market data — every model gets its own paper book, all sharing one
 hash-chained audit log and one kill switch — with the autonomy loop narrating
-live on the Obsidian Desk. Still paper-only end to end.
+live on the Obsidian Desk. Still paper-only end to end. Since V5 M27's
+live-loop follow-up, `--symbols` (comma-separated) runs a real synchronized
+multi-symbol universe — one paper book per model *per symbol*, sharing one
+engine/kill switch/cross-book risk aggregator (defaults to the 5 spot majors:
+BTC/ETH/SOL/BNB/XRP).
 
 ```
-lqe live --symbol BTC-USDT --timeframe 1m --poll-seconds 60 \
-  --lookback-bars 300 --autonomy-every 5 --n-trials 8 \
+lqe live --symbols BTC-USDT,ETH-USDT,SOL-USDT,BNB-USDT,XRP-USDT --timeframe 1m \
+  --poll-seconds 60 --lookback-bars 300 --autonomy-every 5 --n-trials 8 \
   --llm --llm-model llama3.2:3b --out runs/live-session.jsonl
 ```
 
 - `--adapter csv --csv-path <file>` replays a local fixture instead of a real
-  exchange (offline demos, no network).
+  exchange (offline demos, no network) — a single `CsvReplayAdapter` can only
+  ever feed one symbol, so `--adapter csv` requires exactly one `--symbols`
+  entry; real multi-symbol live is a `--adapter ccxt` concern.
 - `--out <path>` persists the trading audit. **Pass the same path again to
   auto-resume** — the fleet's positions, cash, working orders, and risk
   aggregate are reconstructed exactly as they were (by replaying the

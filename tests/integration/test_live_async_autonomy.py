@@ -57,7 +57,7 @@ def _session(tmp_path: Path, *, autonomy_every: int, csv_path: Path | None = Non
         ),
         kill_switch=KillSwitch(path=tmp_path / "kill.json"),
         config=LiveSessionConfig(
-            symbol=SYMBOL, timeframe="1m", poll_seconds=0.0, lookback_bars=60,
+            symbols=[SYMBOL], timeframe="1m", poll_seconds=0.0, lookback_bars=60,
             starting_cash=Decimal("10000"), autonomy_every=autonomy_every,
             n_trials=1, min_periods=50, use_llm=False,
         ),

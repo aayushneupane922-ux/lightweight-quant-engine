@@ -97,7 +97,7 @@ def test_api_jobs_live_start_then_stop(tmp_path: Path) -> None:
     resp = client.post(
         "/api/jobs/live/start",
         json={
-            "adapter": "csv", "exchange": "demo", "csv_path": str(csv_path), "symbol": SYMBOL,
+            "adapter": "csv", "exchange": "demo", "csv_path": str(csv_path), "symbols": [SYMBOL],
             "timeframe": "1m", "poll_seconds": 0.05, "lookback_bars": 100,
             "starting_cash": 10_000.0, "autonomy_every": 1000, "n_trials": 1,
             "min_periods": 50, "use_llm": False,

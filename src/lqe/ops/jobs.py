@@ -172,12 +172,26 @@ class JobManager:
     # -- live ---------------------------------------------------------
 
     def start_live(
-        self, *, adapter: str, exchange: str, csv_path: str | None, symbol: Symbol,
+        self, *, adapter: str, exchange: str, csv_path: str | None, symbols: list[Symbol],
         timeframe: Timeframe, poll_seconds: float, lookback_bars: int, starting_cash: float,
         autonomy_every: int, n_trials: int, min_periods: int, use_llm: bool, llm_model: str,
         out_path: str | None,
     ) -> bool:
         if self.is_live_running():
+            return False
+        if not symbols:
+            return False
+        # `--adapter csv` (offline demos/tests) only ever feeds one
+        # `CsvReplayAdapter`'s single symbol -- same restriction cli.py's
+        # `_cmd_live` enforces, so the GUI can't silently start a
+        # multi-symbol live session where 4 of 5 feeds are permanently
+        # empty (logged as "missing" every cycle, but never surfaced here).
+        if adapter == "csv" and len(symbols) != 1:
+            self._set(
+                "live", "error",
+                "--adapter csv only feeds one symbol's CSV -- pick one symbol, or use ccxt "
+                "for a real multi-symbol universe.",
+            )
             return False
         self._live_stop.clear()
         self._set("live", "running", "Starting live session...")
@@ -190,7 +204,7 @@ class JobManager:
 
                 data_adapter = (
                     CsvReplayAdapter(
-                        Path(csv_path), exchange=exchange, symbol=symbol, timeframe=timeframe
+                        Path(csv_path), exchange=exchange, symbol=symbols[0], timeframe=timeframe
                     )
                     if adapter == "csv" and csv_path
                     else CcxtMarketDataAdapter(exchange)
@@ -198,7 +212,7 @@ class JobManager:
                 session = LiveSession(
                     adapter=data_adapter, kill_switch=self._kill_switch, desk_data=self._desk_data,
                     config=LiveSessionConfig(
-                        symbol=symbol, timeframe=timeframe, poll_seconds=poll_seconds,
+                        symbols=symbols, timeframe=timeframe, poll_seconds=poll_seconds,
                         lookback_bars=lookback_bars, starting_cash=Decimal(str(starting_cash)),
                         autonomy_every=autonomy_every, n_trials=n_trials,
                         min_periods=min_periods, use_llm=use_llm, llm_model=llm_model,

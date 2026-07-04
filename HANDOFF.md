@@ -8,7 +8,7 @@ A **local, paper-only, autonomous quant-research simulator** — built milestone
 
 - **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, `m13-done` … `m17-done`, `v2.0`, then `m18-done`, `m19-done`, `m20-done`, `m21-done`.
 - **Health:** full suite green (409 tests, 8 correctly skipped as of `m21-done`), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`), license gate PASS (50 runtime deps), git tree clean.
-- **Release evidence:** `M12-RELEASE-REVIEW.md` (v1.0) and `V2-RELEASE-REVIEW.md` (v2.0, M13–M16) — both full §19.1 safety/honesty reviews with evidence. v3.0 doesn't have its own review yet — that's M22's job, not done until v3.0 tags. Runtime guide: `USER-GUIDE.md` (not yet updated for v3/M18 — that's also M22's job per `docs/13`'s own plan). Deep-dive on every component: **`COMPONENT-GUIDE.md`** (also not yet updated for M18 — same reason).
+- **Release evidence:** `M12-RELEASE-REVIEW.md` (v1.0) and `V2-RELEASE-REVIEW.md` (v2.0, M13–M16) — both full §19.1 safety/honesty reviews with evidence. v3.0 doesn't have its own review yet — that's M22's job, not done until v3.0 tags. Runtime guide: `USER-GUIDE.md` (not yet updated for v3/M18–M21 — that's also M22's job per `docs/13`'s own plan). Deep-dive on every component: **`COMPONENT-GUIDE.md`** (also not yet updated for M18–M21 — same reason).
 - **Branch:** `master`. Every milestone = one commit + a `mN-done` tag. Git identity is a local placeholder (set per-repo, flagged to the owner).
 
 ### 1a. v2.0: what shipped (docs/12-v2-roadmap.md)
@@ -71,8 +71,8 @@ The owner sent `DEVELOPER-HANDOFF.md` (a standalone, non-agent-jargon briefing o
 
 - **Ollama**: installed at `%LOCALAPPDATA%\Programs\Ollama\ollama.exe`. Not running as a persistent background service on this machine as of the end of this session — start it manually (`ollama serve`, or the `ollama app.exe` tray app) before using `--llm`/the `llm_integration`-marked tests. Model pulled: `llama3.2:3b` (~2GB).
 - **models extra: fully installed** (post-M13) — `statsmodels`, `arch`, `hmmlearn`, `ruptures`, `scikit-learn`, `lightgbm`, `skfolio`, `PyPortfolioOpt`, `riskfolio-lib` are all in `.venv`. `lqe catalog` shows 51/51 admitted, 0 quarantined, on this machine. `LongPathsEnabled=1` is now set in the Windows registry (a system-wide setting, not repo-local — a fresh machine needs this step repeated per `USER-GUIDE.md` §1 before the full `.[models]` install will succeed).
-- **No servers running**: confirmed clean at the end of this session (`Get-Process python*,ollama*` empty).
-- **Demo artifacts**: `data/`, `runs/`, `.claude/launch.json` (has `desk`, `live-fleet`, and now a `launcher` preview config pointing at the rewritten `run.py`) are local/untracked convenience state, not part of the shipped product. Note: the `preview_start` tool's config-name cache didn't pick up the new `launcher` entry mid-session (had to verify M18 manually via a background `python run.py` process + curl instead) — if that recurs, the same manual-verification approach works fine.
+- **No servers running**: confirmed clean at the end of the M21 session (no stray `python`/`ollama` processes).
+- **Demo artifacts**: `data/`, `runs/`, `.claude/launch.json` (has `desk`, `live-fleet`, and a `launcher` preview config pointing at the rewritten `run.py`) are local/untracked convenience state, not part of the shipped product. Note: the `preview_start` tool's config-name cache has repeatedly not picked up new/edited `launch.json` entries mid-session (recurred again in M19/M20/M21) — the reliable fallback used every time since M18 is a manual background `lqe desk`/`run.py` process + `curl`/a small Python client script against the real HTTP/WebSocket endpoints. Expect to need this workaround again next session.
 
 ### Verify everything in one shot (Windows, from repo root)
 ```

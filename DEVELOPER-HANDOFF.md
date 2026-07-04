@@ -1,5 +1,15 @@
 # Developer Handoff — `lightweight-quant-engine`
 
+> **Update (2026-07-04): this ask has been answered and acted on.** The
+> developer this document was sent to proposed two roadmaps — `docs/13-v3-roadmap.md`
+> (M18–M22) and `docs/14-v4-catalog-expansion.md` (M23–M26). **v3.0 has since
+> shipped in full** (one-click launch, the Obsidian Desk design system, a
+> live trade blotter, the "Engine Room" conversation feed, and a hardening/
+> release pass — see `HANDOFF.md` §1c and `V3-RELEASE-REVIEW.md`). v4.0 is
+> scoped but not started. This file is kept as-is below for provenance (the
+> original ask + a snapshot of v2.0) — for current state, read `HANDOFF.md`
+> instead.
+
 **Current state: v2.0, fully shipped.** This document is a complete, standalone
 briefing for a developer picking this project up for the first time — what it
 is, what's been built, how it's built, what it guarantees, and what's known to

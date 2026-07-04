@@ -10,7 +10,7 @@ this file only covers what M18–M21 added or changed. Reproduce the whole
 gate with:
 
 ```
-./.venv/Scripts/pytest.exe -q                        # 420 passed, 6 skipped (heavy-lib quarantine-inversion pairs — statsmodels/arch/pypfopt/skfolio/riskfolio/full-51 all installed, so their quarantine-path tests correctly no-op)
+./.venv/Scripts/pytest.exe -q                        # 418 passed, 8 skipped (6 heavy-lib quarantine-inversion pairs -- statsmodels/arch/pypfopt/skfolio/riskfolio/full-51 all installed, so their quarantine-path tests correctly no-op -- + 2 llm_integration, Ollama not running). Both llm_integration tests pass instead when a local Ollama server happens to be up (420 passed/6 skipped that way) -- either way, 0 failed.
 ./.venv/Scripts/ruff.exe check .                      # All checks passed!
 ./.venv/Scripts/mypy.exe src scripts run.py           # Success: no issues found in 115 source files
 ./.venv/Scripts/python.exe scripts/license_gate.py    # license_gate: PASS — 50 runtime dependencies (full transitive closure) OK

@@ -7,7 +7,7 @@
 A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 (v1.0)**, **M13 through M17 (v2.0, `docs/12-v2-roadmap.md`)**, and **M18 through M22 (v3.0, `docs/13-v3-roadmap.md`)** are all complete, verified, committed, and tagged. v4.0 (`docs/14-v4-catalog-expansion.md`, M23–M26) is scoped but not started at all. See §1a/§1c.
 
 - **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, `m13-done` … `m17-done`, `v2.0`, `m18-done` … `m21-done`, then `v3.0`.
-- **Health:** full suite green (420 passed, 6 correctly skipped — all environment-conditional heavy-lib quarantine-inversion pairs, as of `v3.0`), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`, 115 source files), license gate PASS (50 runtime deps), git tree clean.
+- **Health:** full suite green as of `v3.0` — 418 passed, 8 correctly skipped (6 heavy-lib quarantine-inversion pairs + 2 `llm_integration` tests, since no local Ollama server was running at last check; those 2 pass instead, 420/6, whenever one happens to be up — 0 failed either way), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`, 115 source files), license gate PASS (50 runtime deps), git tree clean.
 - **Release evidence:** `M12-RELEASE-REVIEW.md` (v1.0), `V2-RELEASE-REVIEW.md` (v2.0, M13–M16), and `V3-RELEASE-REVIEW.md` (v3.0, M18–M21) — three full §19.1 safety/honesty reviews with evidence. Runtime guide: `USER-GUIDE.md` (updated for v3.0 at M22). Deep-dive on every component: **`COMPONENT-GUIDE.md`** (updated for v3.0 at M22 — new §12 covers M18–M21 at the same depth as §11's v2.0 write-up).
 - **Branch:** `master`. Every milestone = one commit + a `mN-done` tag. Git identity is a local placeholder (set per-repo, flagged to the owner).
 
@@ -85,7 +85,8 @@ The owner sent `DEVELOPER-HANDOFF.md` (a standalone, non-agent-jargon briefing o
   Blotter view and Engine Room conversation feed are now documented in the
   views tables, the GUI job launcher + onboarding gate in the relevant
   sections, and a new COMPONENT-GUIDE §12 covers all four v3.0 milestones.
-- Full suite: 420 passed, 6 skipped, 0 failed; ruff/mypy/license gate all
+- Full suite: 418 passed, 8 skipped, 0 failed (or 420/6 if a local Ollama
+  server happens to be running — see §1 above); ruff/mypy/license gate all
   green. Tagged `v3.0`.
 
 **v4 (`docs/14-v4-catalog-expansion.md`, M23–M26) is fully scoped but zero work has started.** It depends on nothing in v3, so it can be picked up whenever the owner wants next — not assumed, ask.

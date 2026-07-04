@@ -343,10 +343,11 @@ read the same audit events honestly, from the same `StateReader`.
   intel carry their own honesty tags; both show a reason instead of a
   blank panel when empty; the conversation feed's *default* view — outside
   the power-user `<details>` disclosure — leaks no cryptic internal IDs or
-  raw JSON, verified against a real autopilot campaign) · full suite: 420
-  passed, 6 skipped (all environment-conditional heavy-lib
-  quarantine-inversion pairs) · ruff + mypy (115 source files) + license
-  gate all green.
+  raw JSON, verified against a real autopilot campaign) · full suite: 418
+  passed, 8 skipped (6 heavy-lib quarantine-inversion pairs + 2
+  `llm_integration`, Ollama not running at last check — those 2 pass
+  instead, 420/6, whenever a local Ollama server happens to be up) · ruff
+  + mypy (115 source files) + license gate all green.
 - **Evidence:** `V3-RELEASE-REVIEW.md` re-runs the full §19.1 safety/
   honesty review scoped to M18–M21: no new `Order`/broker-construction
   seam anywhere in the launcher/blotter/conversation code; the onboarding

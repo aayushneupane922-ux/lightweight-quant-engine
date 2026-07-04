@@ -269,6 +269,23 @@ class StateReader:
         self._records = records
         self._catalog = {c.model_id: c for c in (catalog or [])}
         self._run_id = records[0].run_id if records else ""
+        # A reader's record list is fixed at construction, so every derived
+        # view is computed at most once per instance. Without this, the
+        # desk's 2s WebSocket frame replayed the ENTIRE audit log 3x per
+        # frame (snapshot + tape + blotter) and hours-long live sessions got
+        # progressively slower. A first-call race between uvicorn threadpool
+        # threads is benign -- both compute identical results and attribute
+        # assignment is atomic -- so no lock.
+        self._recon_cache: _Reconstruction | None = None
+        self._snapshot_cache: UIState | None = None
+        self._blotter_cache: list[BlotterRow] | None = None
+        self._price_cache: dict[Symbol, list[PriceBar]] = {}
+        self._equity_cache: list[EquityPoint] | None = None
+
+    def _reconstruction(self) -> _Reconstruction:
+        if self._recon_cache is None:
+            self._recon_cache = _Reconstruction(self._records, self._catalog)
+        return self._recon_cache
 
     @classmethod
     def from_jsonl(
@@ -286,15 +303,17 @@ class StateReader:
     # -- snapshot ---------------------------------------------------------
 
     def snapshot(self) -> UIState:
-        recon = _Reconstruction(self._records, self._catalog)
-        return UIState(
-            run_id=self._run_id,
-            kill_active=recon.kill_active,
-            breaches=recon.breaches,
-            session=recon.session(),
-            models=recon.model_cells(),
-            data_health=recon.data_health(),
-        )
+        if self._snapshot_cache is None:
+            recon = self._reconstruction()
+            self._snapshot_cache = UIState(
+                run_id=self._run_id,
+                kill_active=recon.kill_active,
+                breaches=recon.breaches,
+                session=recon.session(),
+                models=recon.model_cells(),
+                data_health=recon.data_health(),
+            )
+        return self._snapshot_cache
 
     # -- blotter (docs/13 M20) ---------------------------------------------
 
@@ -302,21 +321,33 @@ class StateReader:
         """The full order lifecycle (docs/13 M20), rows with `seq >
         after_seq`, oldest first, capped at `limit` -- same incremental-
         poll shape as `tape()`."""
-        recon = _Reconstruction(self._records, self._catalog)
-        rows = [r for r in recon.blotter() if r.seq > after_seq]
+        if self._blotter_cache is None:
+            self._blotter_cache = self._reconstruction().blotter()
+        rows = [r for r in self._blotter_cache if r.seq > after_seq]
         return rows[-limit:]
 
     def reconciliation(self) -> list[ReconciliationRow]:
-        recon = _Reconstruction(self._records, self._catalog)
-        return recon.reconciliation()
+        return self._reconstruction().reconciliation()
 
     # -- tape -------------------------------------------------------------
 
     def tape(self, *, after_seq: int = 0, limit: int = 200) -> list[TapeRow]:
         """Structured event rows with `seq > after_seq` (so the UI can poll
-        incrementally), most-recent last, capped at `limit`."""
-        rows = [_tape_row(env) for env in self._records if env.seq > after_seq]
-        return rows[-limit:]
+        incrementally), most-recent last, capped at `limit`.
+
+        Scans backwards from the tail: the desk polls with `after_seq` near
+        the head and a small `limit`, so this is O(limit) per call instead
+        of a full-log walk. Records are seq-ascending, so collecting from
+        the end while `seq > after_seq` (capped at `limit`) selects exactly
+        the same rows as the naive full filter."""
+        tail: list[EventEnvelope] = []
+        for env in reversed(self._records):
+            if env.seq <= after_seq:
+                break
+            tail.append(env)
+            if len(tail) == limit:
+                break
+        return [_tape_row(env) for env in reversed(tail)]
 
     # -- charts (docs/13 M19) ----------------------------------------------
 
@@ -325,30 +356,32 @@ class StateReader:
         already in the audit log — no new event type. Downsampled to at
         most `max_points` (evenly-strided) so a long-running feed still
         renders a responsive chart."""
-        bars = [
-            PriceBar(
-                ts=env.sim_ts,
-                o=Decimal(str(env.payload["o"])),
-                h=Decimal(str(env.payload["h"])),
-                l=Decimal(str(env.payload["l"])),
-                c=Decimal(str(env.payload["c"])),
-                v=float(env.payload["v"]),
-            )
-            for env in self._records
-            if env.type == "MarketEvent" and str(env.payload["symbol"]) == symbol
-        ]
-        return _downsample(bars, max_points)
+        if symbol not in self._price_cache:
+            self._price_cache[symbol] = [
+                PriceBar(
+                    ts=env.sim_ts,
+                    o=Decimal(str(env.payload["o"])),
+                    h=Decimal(str(env.payload["h"])),
+                    l=Decimal(str(env.payload["l"])),
+                    c=Decimal(str(env.payload["c"])),
+                    v=float(env.payload["v"]),
+                )
+                for env in self._records
+                if env.type == "MarketEvent" and str(env.payload["symbol"]) == symbol
+            ]
+        return _downsample(self._price_cache[symbol], max_points)
 
     def equity_curve(self, *, max_points: int = 1000) -> list[EquityPoint]:
         """The equity curve, oldest first, straight off `RiskStateEvent`s
         already in the audit log — no new event type. Downsampled to at
         most `max_points`."""
-        points = [
-            EquityPoint(ts=env.sim_ts, equity=Decimal(str(env.payload["equity"])))
-            for env in self._records
-            if env.type == "RiskStateEvent"
-        ]
-        return _downsample(points, max_points)
+        if self._equity_cache is None:
+            self._equity_cache = [
+                EquityPoint(ts=env.sim_ts, equity=Decimal(str(env.payload["equity"])))
+                for env in self._records
+                if env.type == "RiskStateEvent"
+            ]
+        return _downsample(self._equity_cache, max_points)
 
     # -- decision cards ---------------------------------------------------
 
@@ -484,8 +517,14 @@ class StateReader:
         deliberately omitted rather than faked."""
         max_seq = self._records[-1].seq if self._records else 0
         effective = max_seq if at_seq is None else at_seq
-        records = [r for r in self._records if r.seq <= effective]
-        recon = _Reconstruction(records, self._catalog)
+        if at_seq is None:
+            # the full-log view -- reuse the shared reconstruction; only the
+            # scrubber path (an explicit earlier at_seq) rebuilds a filtered one
+            records = self._records
+            recon = self._reconstruction()
+        else:
+            records = [r for r in self._records if r.seq <= effective]
+            recon = _Reconstruction(records, self._catalog)
         cells = {c.model_id: c for c in recon.model_cells()}
 
         promoted: set[str] = set()

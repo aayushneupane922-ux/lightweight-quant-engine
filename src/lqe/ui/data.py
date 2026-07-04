@@ -11,6 +11,7 @@ and `simulated` is always true on the snapshot.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -114,6 +115,13 @@ class DeskData:
         # live start-stop). None for `lqe desk`'s read-only render path,
         # which never needs it.
         self.jobs = jobs
+        # Perf phase 4: the serialized WebSocket frame is fully determined
+        # by the (immutable) StateReader instance, so it's computed once per
+        # reader and reused for every client ping until the live loop swaps
+        # a new reader in. Holding the reader in the tuple (not just its
+        # id()) prevents a stale hit if an old reader is garbage-collected
+        # and a new one reuses its address.
+        self._ws_frame_cache: tuple[StateReader, str] | None = None
 
     def set_catalog_rows(self, catalog_rows: list[CatalogRow]) -> None:
         """Swap the Catalog view's rows (docs/13 M18: a GUI-started live
@@ -155,6 +163,25 @@ class DeskData:
 
     def blotter(self, *, after_seq: int = 0, limit: int = 500) -> list[BlotterRow]:
         return self._state_reader.blotter(after_seq=after_seq, limit=limit)
+
+    def ws_frame_text(self) -> str:
+        """The serialized WebSocket push frame (snapshot + tape + blotter +
+        the reader's max seq, so the client can skip repaints when nothing
+        changed). Cached per StateReader instance -- every ping between live
+        polls reuses the same string."""
+        reader = self._state_reader
+        cached = self._ws_frame_cache
+        if cached is not None and cached[0] is reader:
+            return cached[1]
+        frame = {
+            "seq": reader.max_seq,
+            "snapshot": reader.snapshot().model_dump(mode="json"),
+            "tape": [r.model_dump(mode="json") for r in reader.tape(limit=60)],
+            "blotter": [r.model_dump(mode="json") for r in reader.blotter(limit=60)],
+        }
+        text = json.dumps(frame, default=str)
+        self._ws_frame_cache = (reader, text)
+        return text
 
     def reconciliation(self) -> list[ReconciliationRow]:
         return self._state_reader.reconciliation()

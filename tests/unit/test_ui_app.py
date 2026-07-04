@@ -74,6 +74,32 @@ def test_websocket_streams_a_snapshot_frame() -> None:
         assert frame["snapshot"]["simulated"] is True
 
 
+def test_ws_frames_are_cached_per_reader_and_carry_the_seq() -> None:
+    """perf phase 4: pings between live polls reuse one serialized frame
+    (the reader is immutable, so the frame can't change until the live loop
+    swaps a new reader in); `seq` lets the client skip repaints too."""
+    data = DeskData(state_reader=StateReader([]), control=ControlPlane())
+    client = TestClient(create_app(data))
+    with client.websocket_connect("/ws") as ws:
+        first = ws.receive_text()
+        ws.send_text("refresh")
+        second = ws.receive_text()
+        assert second == first  # identical string, not just equal payloads
+        assert json.loads(first)["seq"] == 0
+
+        log = AuditLog()
+        log.append(
+            event_type="ControlEvent", run_id="r", seq=1, book="sandbox",
+            sim_ts=datetime(2026, 1, 1, tzinfo=UTC),
+            payload=ControlEvent(command="START", source="live-loop", operator="t", note="new"),
+        )
+        data.set_state_reader(StateReader(log.records))
+        ws.send_text("refresh")
+        third = json.loads(ws.receive_text())
+        assert third["seq"] == 1  # reader swap invalidates the cached frame
+        assert len(third["tape"]) == 1
+
+
 def test_theme_assets_are_served() -> None:
     client = _client()
     assert client.get("/theme/desk.css").status_code == 200

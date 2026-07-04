@@ -12,7 +12,6 @@ enforced by the safety tests (docs/11 §11.12).
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -320,25 +319,21 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
 
     # --- live push -------------------------------------------------------
 
-    def _ws_frame() -> dict[str, Any]:
-        # docs/13 M20: blotter rows ride the same live push as snapshot/tape
-        # so a new fill reaches the client without a separate poll loop.
-        return {
-            "snapshot": data.snapshot().model_dump(mode="json"),
-            "tape": [r.model_dump(mode="json") for r in data.tape(limit=60)],
-            "blotter": [r.model_dump(mode="json") for r in data.blotter(limit=60)],
-        }
+    # docs/13 M20: blotter rows ride the same live push as snapshot/tape so
+    # a new fill reaches the client without a separate poll loop. The frame
+    # itself is built (and serialized) once per StateReader by DeskData --
+    # every ping between live polls reuses the cached string (perf phase 4).
 
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
         await websocket.accept()
         try:
-            await websocket.send_text(json.dumps(_ws_frame(), default=str))
+            await websocket.send_text(data.ws_frame_text())
             # Read-only stream: the client may ping for a refresh; we never
             # accept a mutating message here (writes go through /api/control).
             while True:
                 await websocket.receive_text()
-                await websocket.send_text(json.dumps(_ws_frame(), default=str))
+                await websocket.send_text(data.ws_frame_text())
         except WebSocketDisconnect:
             return
 

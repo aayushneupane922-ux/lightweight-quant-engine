@@ -287,6 +287,10 @@ class StateReader:
             self._recon_cache = _Reconstruction(self._records, self._catalog)
         return self._recon_cache
 
+    @property
+    def max_seq(self) -> int:
+        return self._records[-1].seq if self._records else 0
+
     def extended(self, new_records: list[EventEnvelope]) -> StateReader:
         """A NEW reader over this one's records + `new_records`, carrying
         the already-built reconstruction and chart caches forward so only

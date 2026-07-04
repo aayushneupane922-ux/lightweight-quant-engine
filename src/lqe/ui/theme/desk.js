@@ -272,11 +272,21 @@
     });
   }
 
+  // Frames carry the reader's max seq; between live polls the server sends
+  // the identical frame every 2s ping, so skip the tape/blotter DOM
+  // rebuilds when nothing changed (perf phase 4). Session/kill paints stay
+  // unconditional -- they're a few textContent writes and the kill state
+  // must never be gated behind a stale-seq heuristic.
+  var lastFrameSeq = null;
+
   function apply(payload) {
     if (payload.snapshot) {
       paintSession(payload.snapshot);
       paintKill(payload.snapshot);
     }
+    var unchanged = payload.seq !== undefined && payload.seq === lastFrameSeq;
+    if (payload.seq !== undefined) lastFrameSeq = payload.seq;
+    if (unchanged) return;
     if (payload.tape) paintTape(payload.tape);
     if (payload.blotter) handleBlotterFrame(payload.blotter);
   }

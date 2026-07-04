@@ -167,8 +167,7 @@ onboarding screen while a background job prepares things — never a blank page
 or a stack trace. From there you can trigger **ingest / backtest / live**
 straight from the desk (buttons, not a terminal) — the GUI calls the exact
 same functions the CLI does, just from a background thread; it opens no new
-order-construction path. `Ctrl`/`Cmd`+`K` opens a command palette to jump to
-any view or action by name.
+order-construction path.
 
 **Blotter (F8, v3.0):** the full trade lifecycle — intent → risk decision
 (APPROVE/CLAMP/REJECT, with the rule that fired) → fill or reject — one row

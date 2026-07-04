@@ -529,7 +529,11 @@ desk is `127.0.0.1`-only with no outbound network at runtime, same rule as
 the pre-existing `viz3d/vendor/`), a `Ctrl`/`Cmd`+`K` command palette, toast
 notifications for control/job actions, and a genuine computed AA-contrast
 audit that caught `--mute` failing the spec's literal 4.5:1 ratio (fixed,
-same hue, not a redesign).
+same hue, not a redesign). *(Update, post-v4.0: the command palette was
+removed — a CSS cascade bug made the overlay always visible instead of only
+on `Ctrl`/`Cmd`+`K`, and it wasn't judged worth fixing further since it
+added no real value on top of the existing `F1`-`F8` keyboard nav. Toasts
+and the hero chart are unaffected.)*
 
 **M20 — live trade blotter.** `StateReader.blotter()`/`.reconciliation()`
 reconstruct the full order lifecycle straight from events already in the

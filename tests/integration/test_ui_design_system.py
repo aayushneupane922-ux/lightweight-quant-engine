@@ -1,7 +1,7 @@
 """Obsidian Desk design-system application (docs/13 M19): CSS token
 contrast, focus-visible rings, tabular numerals, sticky table headers,
-reduced-motion, the command palette, and toasts -- applied across the
-built FastAPI + Jinja UI, not just described in the spec.
+reduced-motion, and toasts -- applied across the built FastAPI + Jinja
+UI, not just described in the spec.
 """
 
 from __future__ import annotations
@@ -108,15 +108,7 @@ def test_no_disallowed_emoji_icons() -> None:
     assert not offenders, f"emoji-as-icon found in: {offenders}"
 
 
-# -- command palette + toasts (rendered on every page) ---------------------
-
-
-def test_command_palette_markup_is_present_on_every_page() -> None:
-    html = _client().get("/").text
-    assert 'id="palette-overlay"' in html
-    assert 'id="palette-input"' in html
-    assert 'id="palette-list"' in html
-    assert 'role="dialog"' in html
+# -- toasts (rendered on every page) ----------------------------------------
 
 
 def test_toast_host_is_present_with_aria_live() -> None:
@@ -125,20 +117,17 @@ def test_toast_host_is_present_with_aria_live() -> None:
     assert 'aria-live="polite"' in html
 
 
-def test_command_palette_hint_shown_in_status_rail() -> None:
-    assert "Ctrl/" in _client().get("/").text
-
-
-def test_command_palette_overlay_is_actually_hidden_by_default() -> None:
-    # regression: `.palette-overlay { display:flex; ... }` alone always wins
-    # over the browser's default `[hidden] { display:none }` UA rule (same
-    # specificity, author beats UA), so the JS's `overlay.hidden = true`
-    # toggle (desk.js `close()`) silently did nothing and the palette stayed
-    # visible on every page load. Found by actually rendering the page in a
-    # browser, not by reading the HTML -- a curl-only check can't see this.
-    block = re.search(r"\.palette-overlay\[hidden\]\s*\{[^}]*\}", _DESK_CSS)
-    assert block is not None, "no CSS rule forces .palette-overlay to hide when [hidden]"
-    assert "display:none" in block.group(0).replace(" ", "")
+def test_no_leftover_command_palette_markup_or_styling() -> None:
+    # the command palette (docs/13 M19) was removed post-v4.0: it opened on
+    # every page load/navigation instead of only on Ctrl/Cmd+K (a CSS
+    # cascade bug -- `.palette-overlay { display:flex }` always beat the
+    # browser's `[hidden]{display:none}`), and wasn't judged worth fixing
+    # further since it added no real value. Guards against it creeping back.
+    html = _client().get("/").text
+    assert "palette" not in html.lower()
+    assert "palette" not in _DESK_CSS.lower()
+    desk_js = (_THEME / "desk.js").read_text(encoding="utf-8")
+    assert "palette" not in desk_js.lower()
 
 
 def test_candlestick_series_uses_fill_vs_outline_not_hue_alone() -> None:

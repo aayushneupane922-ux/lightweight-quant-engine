@@ -447,100 +447,6 @@
       .then(pollBacktest);
   }
 
-  // -- command palette (Ctrl/Cmd+K, docs/13 M19) -------------------------
-  // Built from the nav links already rendered in the DOM (base.html's
-  // `.spine`), so it can never drift from the real nav -- plus two
-  // whitelisted actions the rail already exposes (autopilot toggle, kill).
-
-  function initPalette() {
-    var overlay = document.getElementById("palette-overlay");
-    var input = document.getElementById("palette-input");
-    var list = document.getElementById("palette-list");
-    if (!overlay || !input || !list) return;
-
-    var navItems = Array.prototype.slice.call(document.querySelectorAll(".spine .mode")).map(function (a) {
-      var labelEl = a.querySelector("span");
-      var fkEl = a.querySelector(".fk");
-      return {
-        label: labelEl ? labelEl.textContent.trim() : a.textContent.trim(),
-        hint: fkEl ? fkEl.textContent.trim() : "",
-        action: function () { location.href = a.getAttribute("href"); },
-      };
-    });
-    var actionItems = [];
-    var apBtn = document.getElementById("autopilot-btn");
-    if (apBtn) {
-      actionItems.push({ label: "Toggle Autopilot", hint: "", action: function () { apBtn.click(); } });
-    }
-    var killBtn = document.getElementById("kill-btn");
-    if (killBtn) {
-      actionItems.push({ label: "Kill / Clear Kill", hint: "", action: function () { killBtn.click(); } });
-    }
-    var allItems = navItems.concat(actionItems);
-    var filtered = allItems.slice();
-    var activeIndex = 0;
-
-    function render() {
-      list.innerHTML = "";
-      filtered.forEach(function (item, i) {
-        var div = document.createElement("div");
-        div.className = "palette-item" + (i === activeIndex ? " active" : "");
-        div.setAttribute("role", "option");
-        div.setAttribute("aria-selected", String(i === activeIndex));
-        div.innerHTML = "<span>" + item.label + "</span>" +
-          (item.hint ? '<span class="k">' + item.hint + "</span>" : "");
-        div.addEventListener("click", function () { item.action(); close(); });
-        list.appendChild(div);
-      });
-    }
-
-    function open() {
-      overlay.hidden = false;
-      input.value = "";
-      filtered = allItems.slice();
-      activeIndex = 0;
-      render();
-      input.focus();
-    }
-
-    function close() {
-      overlay.hidden = true;
-    }
-
-    input.addEventListener("input", function () {
-      var q = input.value.toLowerCase();
-      filtered = allItems.filter(function (item) { return item.label.toLowerCase().indexOf(q) !== -1; });
-      activeIndex = 0;
-      render();
-    });
-    input.addEventListener("keydown", function (e) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        activeIndex = Math.min(activeIndex + 1, filtered.length - 1);
-        render();
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        activeIndex = Math.max(activeIndex - 1, 0);
-        render();
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        if (filtered[activeIndex]) { filtered[activeIndex].action(); close(); }
-      } else if (e.key === "Escape") {
-        close();
-      }
-    });
-    overlay.addEventListener("click", function (e) { if (e.target === overlay) close(); });
-
-    document.addEventListener("keydown", function (e) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        if (overlay.hidden) open(); else close();
-      } else if (e.key === "Escape" && !overlay.hidden) {
-        close();
-      }
-    });
-  }
-
   document.addEventListener("DOMContentLoaded", function () {
     var kill = document.getElementById("kill-btn");
     if (kill) {
@@ -577,7 +483,6 @@
       };
       if (map[e.key]) { e.preventDefault(); location.href = map[e.key]; }
     });
-    initPalette();
     initBlotterFilters();
     initConversationScrubber();
     connect();

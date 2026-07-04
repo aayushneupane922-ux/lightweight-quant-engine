@@ -261,26 +261,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="option"]:focu
 }
 
 /* motion (docs/13 M19, 4/10 — tasteful, brief, reduced-motion-safe) */
-.kill, .autopilot, .ctl-btn, .mode, .cell, .card, .palette-item, .toast {
+.kill, .autopilot, .ctl-btn, .mode, .cell, .card, .toast {
   transition:background-color .18s ease-out, border-color .18s ease-out, color .18s ease-out, opacity .2s ease-out;
 }
-
-/* command palette (Ctrl/Cmd+K, docs/13 M19) */
-.palette-hint { font-family:var(--data); }
-.palette-overlay { position:fixed; inset:0; background:rgba(7,9,13,.72); z-index:100;
-  display:flex; justify-content:center; padding-top:12vh; }
-.palette-overlay[hidden] { display:none; }
-.palette { width:min(520px, 90vw); background:var(--slab); border:1px solid var(--ridge);
-  border-radius:7px; padding:10px; box-shadow:0 20px 60px rgba(0,0,0,.5); max-height:70vh;
-  display:flex; flex-direction:column; }
-.palette-input { width:100%; background:var(--void); border:1px solid var(--ridge); color:var(--ink);
-  border-radius:4px; padding:9px 11px; font-size:13px; font-family:var(--ui); }
-.palette-input::placeholder { color:var(--mute); }
-.palette-list { margin-top:8px; overflow:auto; }
-.palette-item { display:flex; justify-content:space-between; align-items:center; padding:8px 10px;
-  border-radius:4px; cursor:pointer; color:var(--ink); font-size:12.5px; }
-.palette-item.active, .palette-item:hover { background:rgba(240,166,42,.12); color:var(--amber); }
-.palette-item .k { color:var(--mute); font-family:var(--data); font-size:10px; letter-spacing:.06em; }
 
 /* toasts (a11y feedback for control/job actions, docs/13 M19) */
 .toasts { position:fixed; right:16px; bottom:16px; z-index:200; display:flex;

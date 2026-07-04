@@ -20,3 +20,6 @@ __pycache__/
 
 # Editor/preview tooling (references the local venv; not portable)
 .claude/
+
+# generated distribution snapshots for external review (see dist/*/REVIEW-README.md)
+/dist/

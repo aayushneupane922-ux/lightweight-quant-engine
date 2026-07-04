@@ -3,7 +3,7 @@
 {% block main %}
 <div class="head">
   <h1>Model Floor</h1>
-  <span class="sub">{{ snapshot.models|length }} models · one live feed · simulated fills</span>
+  <span class="sub">{{ snapshot.models|length }} model × instrument cells · {{ snapshot.data_health|length }} live feed{{ 's' if snapshot.data_health|length != 1 else '' }} · simulated fills</span>
 </div>
 <div class="honesty">
   <span class="tag">SIMULATED</span>
@@ -63,13 +63,16 @@
 
 <div class="grid">
   {% for m in snapshot.models %}
-  <div class="cell" data-model="{{ m.model_id }}">
+  <div class="cell" data-model="{{ m.model_id }}" data-symbol="{{ m.symbol }}">
     <div class="top">
       <div>
         <div class="name">{{ m.model_id }}</div>
-        <div class="fam" title="family · return-driver sleeve (v4)">{{ m.family }} · {{ m.sleeve }}</div>
+        <div class="fam" title="family · return-driver sleeve · instrument (v5)">{{ m.family }} · {{ m.sleeve }} · {{ m.symbol }}</div>
       </div>
-      <span class="{{ 'badge b-' + m.state.lower() }}">{{ m.state }}</span>
+      <div class="top-badges">
+        <span class="badge b-instrument">{{ m.symbol }}</span>
+        <span class="{{ 'badge b-' + m.state.lower() }}">{{ m.state }}</span>
+      </div>
     </div>
     <div class="stance" title="{{ '%.0f'|format(m.stance_pct * 100) }}% of equity deployed (long-only)">
       <b style="width:{{ '%.0f'|format(m.stance_pct * 100) }}%"></b>

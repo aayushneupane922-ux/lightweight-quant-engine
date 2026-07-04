@@ -46,6 +46,7 @@ from lqe.models.adapters.stat_arb_adapter import (
 )
 from lqe.models.adapters.statsmodels_pairs_adapter import StatsmodelsPairsAdapter
 from lqe.models.adapters.supervised_signal_adapter import SupervisedSignalAdapter
+from lqe.models.adapters.universe_regime_adapter import UniverseRegimeGateAdapter
 from lqe.models.base import Strategy
 from lqe.models.catalog import IntakeResult, ModelCatalog
 from lqe.models.manifest import DataNeeds, Family, ModelManifest, Sleeve
@@ -413,6 +414,78 @@ def _cross_sectional_entries(
     return entries
 
 
+def _universe_regime_manifest(model_id: str, one_liner: str, n: int) -> ModelManifest:
+    # V5 M28 ("Wake the Sleeves"): a universe-wide regime overlay, distinct
+    # from the single-instrument regime models below (`regime_hmm`/
+    # `regime_changepoint`/`vol_regime_gate`) -- still tagged `regime_overlay`
+    # (same "switch sleeves, not standalone alpha" philosophy, docs/14 sleeve
+    # I), just scoped to the whole universe's correlation structure instead
+    # of one instrument's own price path.
+    return ModelManifest(
+        id=model_id, family="regime", sleeve="regime_overlay", one_liner=one_liner,
+        economic_rationale=(
+            "A universe-wide correlation spike (systemic/risk-off regime) is a different "
+            "signal than any single instrument's own volatility or trend; gating a trend "
+            "entry on it is a risk-off brake, not a standalone return driver."
+        ),
+        data_needs=DataNeeds(instruments=n, kind="OHLCV"), oss_libs=["own"],
+        params_schema={
+            "corr_lookback": "int>1", "corr_threshold": "float in (0,1)",
+            "trend_lookback": "int>1",
+        },
+        failure_modes=[
+            "long-only simplification (this engine's short path is untested)",
+            "needs a genuinely interleaved multi-symbol bar stream to ever trade -- inert "
+            "(never enough universe history) when fed only this instrument's own bars",
+            "correlation threshold is a fixed constant, not itself adaptive to volatility "
+            "regime -- a genuinely adaptive threshold is future work, not this milestone's",
+        ],
+    )
+
+
+def _universe_regime_entries(
+    symbol: Symbol, universe: Sequence[Symbol] = DEFAULT_UNIVERSE
+) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    # V5 M28: needs at least 2 real siblings to average a pairwise
+    # correlation across -- same no-op guard `_stat_arb_entries` already has
+    # for a small live universe, rather than crashing.
+    if symbol not in universe:
+        universe = (symbol, *universe)
+    others = [sym for sym in universe if sym != symbol]
+    if len(others) < 2:
+        return []
+
+    # (id, one_liner, corr_lookback, corr_threshold, trend_lookback)
+    specs: list[tuple[str, str, int, float, int]] = [
+        (
+            "universe_regime_gate_0",
+            "Long the own-symbol trend only in an idiosyncratic (low-correlation) regime.",
+            20, 0.5, 10,
+        ),
+        (
+            "universe_regime_gate_1",
+            "Same idea, a slower/looser correlation read and trend window.",
+            30, 0.6, 20,
+        ),
+    ]
+
+    def make_factory(
+        mid: str, corr_lookback: int, corr_threshold: float, trend_lookback: int
+    ) -> Callable[[], Strategy]:
+        return lambda: UniverseRegimeGateAdapter(
+            symbol=symbol, name=mid, universe=universe, corr_lookback=corr_lookback,
+            corr_threshold=corr_threshold, trend_lookback=trend_lookback,
+        )
+
+    entries: list[tuple[ModelManifest, Callable[[], Strategy]]] = []
+    for model_id, one_liner, corr_lookback, corr_threshold, trend_lookback in specs:
+        manifest = _universe_regime_manifest(model_id, one_liner, len(universe))
+        entries.append((
+            manifest, make_factory(model_id, corr_lookback, corr_threshold, trend_lookback),
+        ))
+    return entries
+
+
 def _stat_arb_manifest(model_id: str, one_liner: str, n: int) -> ModelManifest:
     # docs/14 sleeve D (v4): stat-arb beyond simple OLS-hedge pairs. Same
     # honest simplifications as sleeve C's `_cross_sectional_manifest` --
@@ -713,6 +786,7 @@ def build_scaled_catalog(
         for manifest, factory in (
             *_native_entries(symbol), *_native_allocator_entries(symbol),
             *_cross_sectional_entries(symbol, universe), *_stat_arb_entries(symbol, universe),
+            *_universe_regime_entries(symbol, universe),
             *_carry_basis_entries(symbol), *_heavy_entries(symbol, universe),
         )
     ]

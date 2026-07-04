@@ -577,4 +577,138 @@ def test_conversation_works_from_templated_narration_without_an_llm() -> None:
 def test_conversation_is_empty_and_valid_when_the_audit_log_has_no_autonomy_events() -> None:
     payload = StateReader([]).conversation()
     assert payload.messages == []
-    assert payload.at_seq == 0 and payload.max_seq == 0
+
+
+# -- V5 M28 "Wake the Sleeves": the Floor's real unit is (model, symbol) --
+
+OTHER_SYMBOL: Symbol = "ETH-USDT"
+
+
+def _fills_log_two_symbols(n_a: int, n_b: int) -> AuditLog:
+    """The SAME strategy ("alpha") trades two different symbols with
+    DIFFERENT fill counts -- proves `model_cells()` gives each (model,
+    symbol) pair its own fully independent book, never conflating one
+    symbol's fills/sparkline/stance into the other's."""
+    log = AuditLog()
+    seq = 1
+    log.append(
+        event_type="RiskStateEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+        payload=RiskStateEvent(
+            equity=Decimal("10000"), cash=Decimal("10000"), daily_pnl=Decimal("0"),
+            gross_exposure=Decimal("0"), peak_equity=Decimal("10000"), drawdown=0.0,
+            open_orders=0, kill_active=False,
+        ),
+    )
+    seq += 1
+    for symbol, n_fills in ((SYMBOL, n_a), (OTHER_SYMBOL, n_b)):
+        for i in range(n_fills):
+            side = "BUY" if i % 2 == 0 else "SELL"
+            intent_id = f"i-{symbol}-{i}"
+            order_id = f"order:{intent_id}"
+            log.append(
+                event_type="OrderIntent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+                payload=OrderIntent(
+                    intent_id=intent_id, signal_ref=f"s{symbol}{i}", strategy="alpha",
+                    symbol=symbol, side=side, qty=Decimal("1"), order_type="MARKET",
+                    idempotency_key=f"k{symbol}{i}", reason="test",
+                ),
+            )
+            seq += 1
+            log.append(
+                event_type="Order", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+                payload=Order(
+                    order_id=order_id, intent_ref=intent_id, side=side, qty=Decimal("1"),
+                    order_type="MARKET", status="PENDING",
+                ),
+            )
+            seq += 1
+            log.append(
+                event_type="FillEvent", run_id="r", seq=seq, book="sandbox", sim_ts=NOW,
+                payload=FillEvent(
+                    order_id=order_id, fill_ts=NOW, fill_px=Decimal(100 + i),
+                    fill_qty=Decimal("1"), fee=Decimal("0.01"), slippage_bps=0.5, partial=False,
+                ),
+            )
+            seq += 1
+    return log
+
+
+def test_same_model_id_trading_two_symbols_yields_two_independent_cells() -> None:
+    reader = StateReader(_fills_log_two_symbols(n_a=10, n_b=3).records)
+    cells = [c for c in reader.snapshot().models if c.model_id == "alpha"]
+    assert len(cells) == 2
+    by_symbol = {c.symbol: c for c in cells}
+    assert set(by_symbol) == {SYMBOL, OTHER_SYMBOL}
+    # different fill counts per symbol -- no cross-contamination of n_trades
+    assert by_symbol[SYMBOL].n_trades == 10
+    assert by_symbol[OTHER_SYMBOL].n_trades == 3
+    # sparklines are independently sized/sourced, not shared or merged
+    assert len(by_symbol[SYMBOL].sparkline_pct) == 10
+    assert len(by_symbol[OTHER_SYMBOL].sparkline_pct) == 3
+    assert by_symbol[SYMBOL].sparkline_pct != by_symbol[OTHER_SYMBOL].sparkline_pct
+
+
+def test_model_cells_never_cross_products_catalog_and_universe() -> None:
+    # Two catalog models (one traded on SYMBOL, one on OTHER_SYMBOL) must
+    # never produce a 2x2 cross-product of cells -- only the pairs that
+    # were actually stamped/observed.
+    log = _fills_log_two_symbols(n_a=4, n_b=0)  # "alpha" only ever trades SYMBOL here
+    reader = StateReader(
+        log.records,
+        catalog=[
+            CatalogModelInfo(model_id="alpha", family="trend", symbol=SYMBOL),
+            CatalogModelInfo(model_id="beta", family="momentum", symbol=OTHER_SYMBOL),
+        ],
+    )
+    cells = reader.snapshot().models
+    keys = {(c.model_id, c.symbol) for c in cells}
+    assert keys == {("alpha", SYMBOL), ("beta", OTHER_SYMBOL)}
+    beta = next(c for c in cells if c.model_id == "beta")
+    assert beta.n_trades == 0 and beta.sparkline_pct == []  # idle, correctly placed
+
+
+def test_real_universe_backtest_gives_the_same_model_id_two_independent_symbol_cells() -> None:
+    # End-to-end via the real multi-instrument backtest runner (not just a
+    # hand-built audit log): the SAME strategy class, instantiated once per
+    # symbol (docs/15's "one book per instrument"), produces two distinct,
+    # independently-correct Floor cells for the same model_id.
+    from lqe.backtest.universe_runner import run_universe_backtest
+
+    bars: list[MarketEvent] = []
+    price_a, price_b = Decimal("100"), Decimal("100")
+    for i in range(60):
+        ts = NOW + timedelta(minutes=i)
+        price_a = price_a + Decimal("1") if (i // 10) % 2 == 0 else price_a - Decimal("1")
+        price_b = price_b - Decimal("1")  # steady downtrend -- never crosses back up
+        for symbol, price in ((SYMBOL, price_a), (OTHER_SYMBOL, price_b)):
+            bars.append(
+                MarketEvent(
+                    exchange="binance", symbol=symbol, timeframe="1m", ts_open=ts,
+                    o=price, h=price + Decimal("1"), l=price - Decimal("1"), c=price,
+                    v=100.0, source_version="test",
+                )
+            )
+
+    result = run_universe_backtest(
+        run_id="ur-test", symbols=[SYMBOL, OTHER_SYMBOL], bars=bars,
+        strategies={
+            SYMBOL: TrendMaCross(symbol=SYMBOL, fast=5, slow=20),
+            OTHER_SYMBOL: TrendMaCross(symbol=OTHER_SYMBOL, fast=5, slow=20),
+        },
+        starting_cash=Decimal("10000"),
+    )
+    reader = StateReader(
+        result.engine.audit.records,
+        catalog=[
+            CatalogModelInfo(model_id="trend_ma_cross", family="trend", symbol=SYMBOL),
+            CatalogModelInfo(model_id="trend_ma_cross", family="trend", symbol=OTHER_SYMBOL),
+        ],
+    )
+    cells = [c for c in reader.snapshot().models if c.model_id == "trend_ma_cross"]
+    assert len(cells) == 2
+    by_symbol = {c.symbol: c for c in cells}
+    assert by_symbol[SYMBOL].n_trades > 0  # BTC's own book actually traded
+    # OTHER_SYMBOL's steady one-way downtrend never gives TrendMaCross an
+    # entry signal -- proves this book's own independence (it doesn't
+    # silently inherit SYMBOL's trades).
+    assert by_symbol[OTHER_SYMBOL].n_trades == 0

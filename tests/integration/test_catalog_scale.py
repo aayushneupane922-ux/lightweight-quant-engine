@@ -86,11 +86,12 @@ def test_heavy_lib_models_quarantine_transparently_when_absent() -> None:
     reason="requires the full 'models' extra (docs/10 M13) to be installed",
 )
 def test_all_models_admit_once_the_full_models_extra_is_installed() -> None:
-    # 104 as of docs/14 (v4) M24's carry/basis sleeve (was 51 at v3.0, 94
-    # after M23) -- bump this again when M25's sleeves land.
+    # 106 as of docs/15 (V5) M28's 2 universe_regime_gate entries (was 51 at
+    # v3.0, 94 after M23, 104 after M24) -- bump this again when a later
+    # milestone adds more.
     catalog, _ = build_scaled_catalog(SYMBOL)
     assert not catalog.quarantined()
-    assert len(catalog.all()) == 104
+    assert len(catalog.all()) == 106
 
 
 def test_the_deliberately_weak_control_is_present() -> None:
@@ -125,6 +126,19 @@ def test_cross_sectional_sleeve_is_now_represented() -> None:
     xsec = [e for e in catalog.all() if e.manifest.sleeve == "cross_sectional"]
     assert len(xsec) >= 4
     assert all(e.manifest.id.startswith("xsec_") for e in xsec)
+
+
+def test_universe_regime_overlay_is_now_represented() -> None:
+    # docs/15 V5 M28: a genuinely universe-wide regime overlay, distinct from
+    # the pre-existing single-instrument regime_hmm/regime_changepoint/
+    # vol_regime_gate entries -- confirm it's actually registered against
+    # the real 5-symbol universe, not just designed on paper.
+    catalog, _ = build_scaled_catalog(SYMBOL)
+    universe_regime = [
+        e for e in catalog.all() if e.manifest.id.startswith("universe_regime_gate_")
+    ]
+    assert len(universe_regime) >= 2
+    assert all(e.manifest.sleeve == "regime_overlay" for e in universe_regime)
 
 
 def test_stat_arb_sleeve_goes_beyond_the_original_single_pairs_model() -> None:

@@ -68,10 +68,10 @@ All in `src/lqe/ui/theme/desk.css` unless noted. These are the audit's concrete 
 - **Gate:** 5 spot symbols run as one deterministic, reconciled, gated book — proven via `run_universe_backtest` (backtest side). `tag m27-done`.
 - **Live-loop follow-up (done, same session as the sanity check that precedes M28 — see `HANDOFF.md` §1k):** `live/session.py`/`live/multi_model_runner.py` rewired to N symbols — `LiveSession` now builds one `LiveMultiModelRunner` per symbol sharing one `Engine`/kill switch/`PortfolioContext`, driven by `Universe.cycles()`; `cli.py`/`ops/jobs.py`/`ui/app.py`+`desk.js` updated `--symbol`→`--symbols`(`s`). Found and fixed two real latent bugs along the way (both pre-existing, only surfaced by a genuinely small/asymmetric universe): `catalog_scale.py`'s stat-arb entries crashed on a <2-sibling universe (now a quarantine-free no-op), and `_synthetic_allocator_closes` silently collapsed to a 2-asset dict when `symbol == "ETH-USDT"` (key collision), reproducing skfolio's known HRP 2-asset crash.
 
-### M28 · Wake the Sleeves  · M · Dep: M27
-- [ ] Turn on cross-sectional momentum/reversal/low-vol ranking, BTC→alt lead-lag, cointegration pairs (ETH/BTC, SOL/ETH…), universe-regime — the v4 adapters that were mute. Each passes intake + the universe-scaled gate.
-- [ ] UI: Floor becomes **models × instruments** using the M26 living cells; show family · sleeve · instrument.
-- **Tests:** each dormant adapter produces real, gated signals across the universe; diversification score now has cross-instrument return streams to measure.
+### M28 · Wake the Sleeves  · M · Dep: M27 — DONE, tag `m28-done`
+- [x] Turn on cross-sectional momentum/reversal/low-vol ranking, BTC→alt lead-lag, cointegration pairs (ETH/BTC, SOL/ETH…) — already admitted since M23/M24, proved firing together across the real universe (not just one illustrative model each) via a new full-catalog test + a fixed `scripts/diversification_report.py` (previously silently starved 2 of 5 real symbols from ever reaching those adapters). **"Universe-regime" did not exist in the codebase before this milestone** — built a new native `UniverseRegimeGateAdapter` (correlation-gated systemic/idiosyncratic regime switch), catalog 104→106. Each passes intake + the universe-scaled gate.
+- [x] UI: Floor becomes **models × instruments** using the M26 living cells; show family · sleeve · instrument. `StateReader.model_cells()` rewritten to yield one cell per (model_id, symbol) pair; verified live (same model_id renders as 5 independent cells with 5 different real trade counts).
+- **Tests:** each dormant adapter produces real, gated signals across the universe; diversification score now has cross-instrument return streams to measure. Done — see `HANDOFF.md` §1l.
 - **Gate:** the previously-dormant intelligence is alive and honestly gated. `tag m28-done`.
 
 ### M29 · Universe UI + ⭐ The Promotion Moment (signature)  · M · Opus · Dep: M28

@@ -52,11 +52,22 @@ class CatalogModelInfo(BaseModel):
     # direct constructions (tests) don't need updating.
     sleeve: str = "—"
     status: ModelStatus = "unproven"
+    # V5 M28 "Wake the Sleeves": which instrument this catalog entry was
+    # registered for -- `build_scaled_catalog` is called once per symbol
+    # (docs/15's "one book per instrument"), so the caller always knows this
+    # at registration time. `None` default keeps every pre-M28 direct
+    # construction (single-symbol callers/tests) working unchanged; an idle
+    # (never-traded) catalog entry needs this to render a Floor cell at all.
+    symbol: Symbol | None = None
 
 
 class ModelCell(BaseModel):
     model_config = _FROZEN
     model_id: str
+    # V5 M28 "Wake the Sleeves": the instrument this cell belongs to -- the
+    # real Floor unit is now (model, symbol), not model alone, since the
+    # same model_id can trade multiple symbols with fully independent books.
+    symbol: Symbol
     family: str
     sleeve: str = "—"
     state: ModelState
@@ -281,6 +292,18 @@ class StateReader:
         catalog: list[CatalogModelInfo] | None = None,
     ) -> None:
         self._records = records
+        # V5 M28: still keyed by plain model_id, not (model_id, symbol) --
+        # when the SAME model_id is registered once per symbol (the live
+        # multi-symbol fleet), only the last-registered symbol's
+        # `CatalogModelInfo` survives here. This only affects an IDLE
+        # (never-yet-signaled/filled) model's fallback cell placement in
+        # `model_cells()` -- once a model actually trades on a given
+        # symbol, `_strategies_by_symbol` (this milestone's real fix) gives
+        # it its own fully correct, independent cell regardless of this
+        # dict's key collision. Widening this to a (model_id, symbol) key
+        # is deferred -- a disclosed, narrow display-only limitation for a
+        # model that hasn't fired on ANY of its symbols yet, not a
+        # correctness gap in anything that has actually traded.
         self._catalog = {c.model_id: c for c in (catalog or [])}
         self._run_id = records[0].run_id if records else ""
         # A reader's record list is fixed at construction, so every derived
@@ -564,7 +587,20 @@ class StateReader:
         else:
             records = [r for r in self._records if r.seq <= effective]
             recon = _Reconstruction(records, self._catalog)
-        cells = {c.model_id: c for c in recon.model_cells()}
+        # V5 M28: `model_cells()` now yields one cell per (model, symbol) --
+        # a model_id trading more than one instrument has more than one
+        # cell. The neural-web graph (unlike the Floor) has no per-
+        # instrument node concept yet (autonomy events like
+        # `HypothesisEvent`/`PromotionEvent` only ever name a bare
+        # model_id, no symbol) -- reshaping graph() into "models x
+        # instruments" nodes is explicitly M29's job ("Universe UI"), not
+        # this one's. Until then, keep the most-active (highest n_trades)
+        # cell per model_id rather than an arbitrary dict-collision pick.
+        cells: dict[str, ModelCell] = {}
+        for c in recon.model_cells():
+            existing = cells.get(c.model_id)
+            if existing is None or c.n_trades > existing.n_trades:
+                cells[c.model_id] = c
 
         promoted: set[str] = set()
         de_risked: set[str] = set()
@@ -896,14 +932,13 @@ class _Reconstruction:
         self._decision_ts: dict[str, datetime] = {}
         self._fill_pnl: dict[int, Decimal] = {}
         self._fill_envs: list[EventEnvelope] = []
-        self._strategies: dict[str, _StrategyAgg] = defaultdict(_StrategyAgg)
-        # V5 M27 (Universe Core): a SEPARATE (model_id, symbol)-keyed
-        # aggregation, used only by `reconciliation()`. `self._strategies`
-        # above stays keyed by plain model_id (unchanged) for the Floor's
-        # `model_cells()` -- reshaping that view into "models x instruments"
-        # is M28's job, not this one's. Without this second aggregation, a
-        # model_id that genuinely trades more than one symbol would have
-        # its positions silently conflated into one FIFO lot list.
+        # V5 M27 (Universe Core) introduced this (model_id, symbol)-keyed
+        # aggregation for `reconciliation()`; V5 M28 ("Wake the Sleeves")
+        # made it the ONE aggregation path (the old flat, model_id-only
+        # `self._strategies` was retired) since the Floor's `model_cells()`
+        # now also needs the same (model, symbol) granularity -- the same
+        # model_id genuinely trading more than one instrument gets fully
+        # independent books/sparklines/stance, never silently conflated.
         self._strategies_by_symbol: dict[tuple[str, Symbol], _StrategyAgg] = defaultdict(
             _StrategyAgg
         )
@@ -943,9 +978,6 @@ class _Reconstruction:
         clone._decision_ts = dict(self._decision_ts)
         clone._fill_pnl = dict(self._fill_pnl)
         clone._fill_envs = list(self._fill_envs)
-        clone._strategies = defaultdict(
-            _StrategyAgg, {k: v.clone() for k, v in self._strategies.items()}
-        )
         clone._strategies_by_symbol = defaultdict(
             _StrategyAgg, {k: v.clone() for k, v in self._strategies_by_symbol.items()}
         )
@@ -971,7 +1003,7 @@ class _Reconstruction:
 
     def _on_SignalEvent(self, env: EventEnvelope) -> None:
         p = env.payload
-        agg = self._strategies[str(p["strategy"])]
+        agg = self._strategies_by_symbol[(str(p["strategy"]), str(p["symbol"]))]
         agg.last_reason = str(p.get("reason", ""))
         agg.last_direction = str(p["direction"])
 
@@ -1003,7 +1035,17 @@ class _Reconstruction:
         strategy = self._order_to_strategy.get(order_id)
         if strategy is None:
             return
-        agg = self._strategies[strategy]
+        # The symbol comes from the existing order -> intent audit chain,
+        # not a new event field -- same lookup M27 already used to keep
+        # `reconciliation()` symbol-correct; M28 makes this the ONE
+        # aggregation path (see `self._strategies_by_symbol`'s own comment
+        # in `__init__`), so `model_cells()` gets the same correctness.
+        intent_ref = self._order_to_intent.get(order_id)
+        intent = self._intent_meta.get(intent_ref) if intent_ref else None
+        symbol = intent.get("symbol") if intent else None
+        if symbol is None:
+            return  # not honestly reconstructable -- same "skip, don't guess" pattern as blotter()
+        agg = self._strategies_by_symbol[(strategy, symbol)]
         qty = Decimal(str(p["fill_qty"]))
         px = Decimal(str(p["fill_px"]))
         fee = Decimal(str(p["fee"]))
@@ -1019,22 +1061,6 @@ class _Reconstruction:
         sample = _sim_return_pct(agg, self._starting_equity)
         if sample is not None:
             agg.record_sample(sample)
-
-        # V5 M27: the SAME fill, aggregated separately keyed by
-        # (model_id, symbol) for `reconciliation()` -- a model_id trading
-        # more than one symbol must never have its positions conflated
-        # into one FIFO lot list (see `self._strategies_by_symbol`'s own
-        # comment in `__init__`). The symbol comes from the existing
-        # order -> intent audit chain, not a new event field.
-        intent_ref = self._order_to_intent.get(order_id)
-        intent = self._intent_meta.get(intent_ref) if intent_ref else None
-        symbol = intent.get("symbol") if intent else None
-        if symbol is not None:
-            by_symbol = self._strategies_by_symbol[(strategy, symbol)]
-            if side == "BUY":
-                by_symbol.on_buy(qty, px, fee)
-            else:
-                by_symbol.on_sell(qty, px, fee)
 
     def _on_RiskStateEvent(self, env: EventEnvelope) -> None:
         p = env.payload
@@ -1062,16 +1088,40 @@ class _Reconstruction:
             drawdown=float(str(p["drawdown"])),
         )
 
+    def _sole_observed_symbol(self) -> Symbol | None:
+        return next(iter(self._symbols)) if len(self._symbols) == 1 else None
+
     def model_cells(self) -> list[ModelCell]:
-        # union of catalog models and any strategy that actually traded
-        ids = list(self._catalog) + [s for s in self._strategies if s not in self._catalog]
+        # V5 M28 "Wake the Sleeves": the real Floor unit is (model, symbol),
+        # not model alone -- the same model_id can trade multiple symbols
+        # with fully independent books/sparklines/stance. Union of every
+        # (model, symbol) pair that actually signaled/traded, plus every
+        # catalog model's own symbol (so an admitted-but-idle model still
+        # renders a zero cell, same honesty guarantee the old model-only
+        # view had). A catalog entry with no stamped `symbol` (pre-M28
+        # direct construction) falls back to this reconstruction's own sole
+        # observed symbol when unambiguous -- keeps every single-symbol
+        # caller/test working unchanged without requiring every one of them
+        # to be updated.
+        traded_keys = set(self._strategies_by_symbol)
+        catalog_keys: set[tuple[str, Symbol]] = set()
+        for model_id, catalog_info in self._catalog.items():
+            # "—" (same placeholder convention as an unknown family/sleeve)
+            # only when NOTHING is known yet -- no stamped symbol and no
+            # bars observed at all (e.g. a freshly-idle demo snapshot before
+            # any audit log exists) -- an idle catalog model must still
+            # render a cell, same guarantee the pre-M28 model-only view had.
+            symbol = catalog_info.symbol or self._sole_observed_symbol() or "—"
+            catalog_keys.add((model_id, symbol))
+        keys = sorted(traded_keys | catalog_keys)
+
         current_equity = (
             Decimal(str(self._last_risk_state["equity"])) if self._last_risk_state else None
         )
         cells = []
-        for model_id in ids:
+        for model_id, symbol in keys:
             info = self._catalog.get(model_id)
-            agg = self._strategies.get(model_id)
+            agg = self._strategies_by_symbol.get((model_id, symbol))
             family = info.family if info else "unknown"
             sleeve = info.sleeve if info else "unknown"
             status: ModelStatus = info.status if info else "unproven"
@@ -1080,6 +1130,7 @@ class _Reconstruction:
             cells.append(
                 ModelCell(
                     model_id=model_id,
+                    symbol=symbol,
                     family=family,
                     sleeve=sleeve,
                     state=state,

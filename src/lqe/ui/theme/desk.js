@@ -79,8 +79,17 @@
     return x === null || x === undefined ? "—" : Number(x).toFixed(digits);
   }
 
-  function pulseModelCell(modelId) {
-    var cell = document.querySelector('.cell[data-model="' + modelId + '"]');
+  function pulseModelCell(modelId, symbol) {
+    // V5 M28: the Floor's real unit is (model, symbol) -- a lone data-model
+    // selector would only ever match the FIRST cell for a repeated
+    // model_id once the same model trades more than one instrument, so the
+    // wrong cell (or no cell at all) could pulse. Only fall back to a
+    // model-only match when no symbol was supplied (keeps this callable
+    // the old way too).
+    var selector = symbol
+      ? '.cell[data-model="' + modelId + '"][data-symbol="' + symbol + '"]'
+      : '.cell[data-model="' + modelId + '"]';
+    var cell = document.querySelector(selector);
     if (!cell) return;
     cell.classList.remove("pulse");
     void cell.offsetWidth; // restart the animation if it's already mid-run
@@ -205,7 +214,7 @@
     var newFills = rows.filter(function (r) { return r.seq > lastBlotterSeq && r.fill_qty != null; });
     newFills.forEach(function (r) {
       toast(r.model + " " + r.side + " " + Number(r.fill_qty).toFixed(4) + " @ " + r.fill_px + " (sim)", "ok");
-      pulseModelCell(r.model);
+      pulseModelCell(r.model, r.symbol);
       flashBlotterRow(r.seq);
     });
     if (newFills.length && soundEnabled()) playFillSound();

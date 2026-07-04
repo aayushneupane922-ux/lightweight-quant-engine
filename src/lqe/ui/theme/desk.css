@@ -190,6 +190,7 @@ a { color:inherit; text-decoration:none; }
   border-radius:5px; padding:12px; overflow:hidden; }
 .cell::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--intel); opacity:.4; }
 .cell .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:9px; }
+.cell .top-badges { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
 .cell .name { font-weight:600; font-size:12.5px; }
 .cell .fam { color:var(--mute); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; margin-top:2px; }
 
@@ -211,6 +212,11 @@ a { color:inherit; text-decoration:none; }
 .b-short { color:var(--short); border:1px solid rgba(240,82,77,.45); background:rgba(240,82,77,.08); }
 .b-fired { color:var(--amber); border:1px solid rgba(240,166,42,.5); background:rgba(240,166,42,.1); }
 .b-halted { color:var(--short); border:1px solid rgba(240,82,77,.45); }
+/* V5 M28 "Wake the Sleeves": the Floor's real unit is (model, symbol), not
+   model alone -- a neutral instrument badge, deliberately not reusing any
+   state color (b-long/b-short/etc.) so it never competes with the state
+   badge's meaning. */
+.b-instrument { color:var(--mute); border:1px solid var(--ridge); background:var(--ridge); }
 .row { display:flex; justify-content:space-between; align-items:flex-end; }
 .kv .k { color:var(--mute); font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
 .kv .v { font-size:13px; }

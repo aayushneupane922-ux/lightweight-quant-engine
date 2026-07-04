@@ -219,13 +219,13 @@ class LiveSession:
         self.catalogs: dict[Symbol, ModelCatalog] = {}
         self.catalog_results: dict[Symbol, list[IntakeResult]] = {}
         self.runners: dict[Symbol, LiveMultiModelRunner] = {}
-        admitted_all: list[CatalogEntry] = []
+        admitted_all: list[tuple[Symbol, CatalogEntry]] = []
         for sym in symbols:
             catalog, results = build_scaled_catalog(sym, universe=symbols)
             self.catalogs[sym] = catalog
             self.catalog_results[sym] = results
             admitted = catalog.all()
-            admitted_all.extend(admitted)
+            admitted_all.extend((sym, e) for e in admitted)
             fleet = build_fleet(admitted, starting_cash=self.config.starting_cash)
             self.runners[sym] = LiveMultiModelRunner(
                 engine=self.trade_engine, fleet=fleet, symbol=sym, risk_model=risk_model,
@@ -261,14 +261,15 @@ class LiveSession:
         self._catalog_info = [
             # Every admitted model is author-declared "unproven" at intake
             # (models.manifest); only a gate PASS elsewhere ever sets
-            # "validated". Duplicate model_ids across symbols collapse
-            # harmlessly -- StateReader keys this by model_id alone, and
-            # family/sleeve/status don't vary per symbol.
+            # "validated". V5 M28: each entry is stamped with the symbol its
+            # OWN per-symbol catalog was built for -- the Floor's "models x
+            # instruments" reshape needs this to place an idle (never-
+            # traded) admitted model's cell on the right instrument.
             CatalogModelInfo(
                 model_id=e.manifest.id, family=e.manifest.family,
-                sleeve=e.manifest.sleeve, status="unproven",
+                sleeve=e.manifest.sleeve, status="unproven", symbol=sym,
             )
-            for e in admitted_all
+            for sym, e in admitted_all
         ]
 
         if self._desk_data is None:

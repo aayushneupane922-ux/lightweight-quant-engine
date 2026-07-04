@@ -59,7 +59,10 @@ def build_desk_data(
     ]
 
     catalog_info = [
-        CatalogModelInfo(model_id=r.model_id, family=r.family, sleeve=r.sleeve, status="unproven")
+        CatalogModelInfo(
+            model_id=r.model_id, family=r.family, sleeve=r.sleeve, status="unproven",
+            symbol=symbol,
+        )
         for r in catalog_rows
         if not r.quarantined
     ]

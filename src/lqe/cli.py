@@ -576,7 +576,14 @@ def _cmd_live(args: argparse.Namespace) -> int:
     else:
         print(f"seeding {args.lookback_bars} recent bars...")
     if not session.setup():
-        print("no bars returned -- check network/exchange/symbol (or --csv-path).")
+        print(
+            "no bars returned -- check network/exchange/symbol (or --csv-path). "
+            "Note: seeding looks back --lookback-bars * --timeframe from the current "
+            "wall-clock time, so a --adapter csv fixture with old/fixed timestamps "
+            "(e.g. a frozen demo CSV) will show no bars once enough real time has "
+            "passed -- regenerate the fixture with recent timestamps, or increase "
+            "--lookback-bars enough to cover the gap."
+        )
         return 1
     print(
         f"fleet: {len(session.catalog.all())}/{len(session.catalog_results)} models admitted "

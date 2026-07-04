@@ -38,6 +38,7 @@ def build_desk_data(
         CatalogRow(
             model_id=entry.manifest.id,
             family=entry.manifest.family,
+            sleeve=entry.manifest.sleeve,
             one_liner=entry.manifest.one_liner,
             oss_libs=list(entry.manifest.oss_libs),
             status=entry.manifest.status,
@@ -58,7 +59,7 @@ def build_desk_data(
     ]
 
     catalog_info = [
-        CatalogModelInfo(model_id=r.model_id, family=r.family, status="unproven")
+        CatalogModelInfo(model_id=r.model_id, family=r.family, sleeve=r.sleeve, status="unproven")
         for r in catalog_rows
         if not r.quarantined
     ]

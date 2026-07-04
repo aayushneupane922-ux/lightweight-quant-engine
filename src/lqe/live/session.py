@@ -58,7 +58,7 @@ def _market_events_from_audit(audit: AuditLog) -> list[MarketEvent]:
 def _catalog_rows(catalog: ModelCatalog) -> list[CatalogRow]:
     rows = [
         CatalogRow(
-            model_id=e.manifest.id, family=e.manifest.family,
+            model_id=e.manifest.id, family=e.manifest.family, sleeve=e.manifest.sleeve,
             one_liner=e.manifest.one_liner, oss_libs=list(e.manifest.oss_libs),
             status=e.manifest.status,
         )
@@ -193,7 +193,10 @@ class LiveSession:
         self._catalog_info = [
             # Every admitted model is author-declared "unproven" at intake
             # (models.manifest); only a gate PASS elsewhere ever sets "validated".
-            CatalogModelInfo(model_id=e.manifest.id, family=e.manifest.family, status="unproven")
+            CatalogModelInfo(
+                model_id=e.manifest.id, family=e.manifest.family,
+                sleeve=e.manifest.sleeve, status="unproven",
+            )
             for e in admitted
         ]
 

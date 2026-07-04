@@ -49,6 +49,11 @@ class CatalogRow(BaseModel):
     model_config = _FROZEN
     model_id: str
     family: str
+    # docs/14 (v4): the return-driver sleeve -- the actual diversification
+    # unit the catalog is measured by, a coarser and differently-motivated
+    # cut than `family`. Defaulted so pre-v4 direct constructions (tests)
+    # don't need updating.
+    sleeve: str = "—"
     one_liner: str
     oss_libs: list[str]
     status: Literal["unproven", "in_research", "validated"]

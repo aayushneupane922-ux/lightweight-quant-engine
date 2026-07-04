@@ -41,6 +41,10 @@ class CatalogModelInfo(BaseModel):
     model_config = _FROZEN
     model_id: str
     family: str
+    # docs/14 (v4): the return-driver sleeve -- the catalog's actual
+    # diversification unit, coarser than `family`. Defaulted so pre-v4
+    # direct constructions (tests) don't need updating.
+    sleeve: str = "—"
     status: ModelStatus = "unproven"
 
 
@@ -48,6 +52,7 @@ class ModelCell(BaseModel):
     model_config = _FROZEN
     model_id: str
     family: str
+    sleeve: str = "—"
     state: ModelState
     status: ModelStatus
     sim_return_pct: float | None  # None = not enough data yet (rendered "—")
@@ -880,6 +885,7 @@ class _Reconstruction:
             info = self._catalog.get(model_id)
             agg = self._strategies.get(model_id)
             family = info.family if info else "unknown"
+            sleeve = info.sleeve if info else "unknown"
             status: ModelStatus = info.status if info else "unproven"
             state = _model_state(agg, kill_active=self.kill_active)
             sim_return = _sim_return_pct(agg, self._starting_equity)
@@ -887,6 +893,7 @@ class _Reconstruction:
                 ModelCell(
                     model_id=model_id,
                     family=family,
+                    sleeve=sleeve,
                     state=state,
                     status=status,
                     sim_return_pct=sim_return,

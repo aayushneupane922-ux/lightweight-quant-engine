@@ -14,9 +14,9 @@ from fastapi.testclient import TestClient
 from lqe.core.engine import AuditLog
 from lqe.core.events import ControlEvent
 from lqe.live.control import ControlPlane
-from lqe.storage.state_reader import StateReader
+from lqe.storage.state_reader import CatalogModelInfo, StateReader
 from lqe.ui.app import create_app
-from lqe.ui.data import DeskData
+from lqe.ui.data import CatalogRow, DeskData
 
 
 def _client() -> TestClient:
@@ -27,6 +27,33 @@ def _client() -> TestClient:
 @pytest.mark.parametrize("page", ["/", "/catalog", "/research", "/risk", "/daily"])
 def test_all_views_render(page: str) -> None:
     assert _client().get(page).status_code == 200
+
+
+def test_catalog_view_and_floor_snapshot_both_show_the_sleeve_not_just_family() -> None:
+    # docs/14 (v4): sleeve, not family, is the catalog's actual
+    # diversification unit -- both surfaces that list models by family
+    # must also carry the sleeve, not silently drop it.
+    catalog = [
+        CatalogModelInfo(model_id="trend_ma_cross", family="trend", sleeve="trend_momentum"),
+    ]
+    data = DeskData(
+        state_reader=StateReader([], catalog=catalog),
+        control=ControlPlane(),
+        catalog_rows=[
+            CatalogRow(
+                model_id="trend_ma_cross", family="trend", sleeve="trend_momentum",
+                one_liner="MA cross.", oss_libs=["own"], status="unproven",
+            )
+        ],
+    )
+    client = TestClient(create_app(data))
+
+    catalog_html = client.get("/catalog").text
+    assert "Sleeve" in catalog_html
+    assert "trend_momentum" in catalog_html
+
+    snapshot = client.get("/api/snapshot").json()
+    assert snapshot["models"][0]["sleeve"] == "trend_momentum"
 
 
 def test_snapshot_api_is_read_only_and_marks_simulated() -> None:

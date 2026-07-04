@@ -13,13 +13,14 @@
 
 <table class="data">
   <thead>
-    <tr><th>Model</th><th>Family</th><th style="text-align:left">One-liner</th><th>Libraries</th><th>Status</th></tr>
+    <tr><th>Model</th><th>Family</th><th>Sleeve</th><th style="text-align:left">One-liner</th><th>Libraries</th><th>Status</th></tr>
   </thead>
   <tbody>
     {% for r in rows %}
     <tr{% if r.quarantined %} class="lowN"{% endif %}>
       <td>{{ r.model_id }}</td>
       <td>{{ r.family }}</td>
+      <td title="the return-driver sleeve -- v4's diversification unit, coarser than family">{{ r.sleeve }}</td>
       <td style="text-align:left; color:var(--mute)">{{ r.one_liner }}</td>
       <td>{{ r.oss_libs|join(", ") }}</td>
       <td>

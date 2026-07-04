@@ -75,6 +75,34 @@ passes a backtest · `unproven` until gated) is unchanged, **plus**:
   and their metrics, deliberately kept separate from `intake_check` since
   it needs real backtest returns rather than just a manifest + factory).
   7 tests, `tests/unit/test_curation.py`.
+  — **(M25) The "wired into a live pipeline" question, answered**:
+  `scripts/curation_report.py` operationalizes it for real — walks the
+  full 104-model catalog in registration order, backtesting each on the
+  same synthetic multi-symbol stream `diversification_report.py` uses, and
+  checks each candidate against every model registered before it (i.e.
+  "if this check had been enforced from the start, what would it have
+  caught?"). **Measured result**: 46 of 97 non-degenerate models (47%)
+  would have been flagged as redundant duplicates. Two genuinely different
+  causes, both honest findings: (a) real near-duplicate parameterizations
+  — adjacent-lookback MACD/Donchian/TSMOM/ROC variants correlating
+  0.78–1.00, exactly the "40th trend clone" case this check exists to
+  catch; and (b) **short-window behavioral convergence** — several
+  conceptually unrelated models (`naive_always_long`, `day_of_week_0`,
+  several allocators, `carry_basis_0`, `xsec_low_vol`) each entered a
+  position once near the start of the ~1.4-day (2000-minute) test window
+  and simply held it through the end, so their equity curves all tracked
+  raw BTC-USDT price 1:1 for this specific run (confirmed: `naive_always_
+  long` and `day_of_week_0` finish with the *identical* position size) —
+  correlation 1.00 here reflects "both went long and held in this
+  instance," not "these are the same strategy." A real gate would need a
+  longer, more eventful backtest window (or genuine walk-forward held-out
+  data) before this becomes a trustworthy admission gate rather than a
+  diagnostic; this script is exactly that diagnostic, run for real for the
+  first time. 3 new tests (`tests/integration/test_curation_report.py`)
+  prove the same real pipeline (real `Session` backtests → real equity
+  returns → `correlation_curation_check`) correctly flags a genuine,
+  constructed duplicate (two identically-parameterized MACD strategies,
+  correlation exactly 1.0).
 - [x] Tag each model with its **sleeve** in the manifest so the
   diversification score and the "no sleeve dominates" rule are computable.
   — `Sleeve` (14 values: the 13 lettered sleeves + `control` for the
@@ -351,14 +379,19 @@ construction.
   tested against real ingested data, not just synthetic constructor
   arguments) — not on a false claim that the diversification target was
   hit.
-- **M25 (optional/later) · Microstructure (J) + cross-exchange (K).**
-  Only if wanted; heavier data + research-only caveats. May be deferred
-  past v4.0 without blocking it — flag to the owner before starting.
-- **M26 · Diversification review & tag.** Re-run validation with the full
-  trial-count; report the diversification score + effective-number-of-bets;
-  safety/honesty review (`V4-RELEASE-REVIEW.md`); regenerate notices;
-  **tag v4.0**. (Becomes M25 if M25/microstructure is deferred — renumber
-  at that point, don't leave a gap in the tag sequence.)
+- ~~**M25 (optional/later) · Microstructure (J) + cross-exchange (K).**~~
+  **DEFERRED past v4.0** (docs/14 itself explicitly permits this — "may be
+  deferred past v4.0 without blocking it"). Needs heavier L2/tick data
+  plumbing than anything built in M23/M24; nothing here needed it, so it
+  wasn't opportunistically started. Flag to the owner if ever picked up as
+  a v5+ increment — sleeves J (microstructure) and K (cross-exchange
+  price spread) remain unrepresented in the catalog.
+- **M25 (renumbered from M26 — M25/microstructure deferred, per this
+  doc's own instruction not to leave a gap in the tag sequence) ·
+  Diversification review & tag.** ✅ DONE (`m25-done`, then `v4.0`).
+  Re-run validation with the full trial-count; report the diversification
+  score + effective-number-of-bets; safety/honesty review
+  (`V4-RELEASE-REVIEW.md`); regenerate notices; **tag v4.0**.
 
 ## 7. Acceptance gate (what "done" means — not "50 added")
 - The **tracked/promoted** set spans ≥ 8–10 low-correlation sleeves with

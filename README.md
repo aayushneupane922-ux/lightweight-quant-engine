@@ -4,22 +4,28 @@ A **local, paper-only, autonomous quant research simulator**: a large catalog of
 
 **The honest core:** exploration is free in the sandbox, but the equity curve you *watch* (the tracked book) only accepts changes that pass out-of-sample validation, and it de-risks — never chases — on degradation. The **system** learns on history, runs the validated result live, watches live for decay, and re-learns on history when it decays; the LLM steers and explains, the math decides.
 
-## Status: v3.0 (v1.0's M0–M12, v2.0's M13–M17, v3.0's M18–M22, all complete)
+## Status: v4.0 (v1.0's M0–M12, v2.0's M13–M17, v3.0's M18–M22, v4.0's M23–M25, all complete)
 
 The engine is built — M0–M12 (v1.0), M13–M17 (v2.0, `docs/12-v2-roadmap.md`: a
 complete catalog, `lqe live` as a real CLI subcommand with resume, and real CI
-coverage for the LLM/heavy-model path), and M18–M22 (v3.0,
-`docs/13-v3-roadmap.md`: a one-click launcher with onboarding + GUI-triggered
-jobs, the Obsidian Desk institutional design system, a live trade blotter you
-can watch fill by fill, and the "Engine Room" — a turn-by-turn Strategist/
-Optimizer/Judge/Autopilot/Risk conversation feed) — done, verified, and
-tagged. **To run it, read [USER-GUIDE.md](USER-GUIDE.md)**; to understand how
-every piece works and how to operate/extend it, read
+coverage for the LLM/heavy-model path), M18–M22 (v3.0, `docs/13-v3-roadmap.md`:
+a one-click launcher with onboarding + GUI-triggered jobs, the Obsidian Desk
+institutional design system, a live trade blotter you can watch fill by fill,
+and the "Engine Room" — a turn-by-turn Strategist/Optimizer/Judge/Autopilot/
+Risk conversation feed), and M23–M25 (v4.0, `docs/14-v4-catalog-expansion.md`:
+the catalog grew from 51 to **104 models across 12 return-driver sleeves** —
+cross-sectional, stat-arb, and funding/basis carry strategies genuinely
+diversify the book beyond trend/momentum clones, measured by a real
+diversification score, not a headcount) — done, verified, and tagged. **To
+run it, read [USER-GUIDE.md](USER-GUIDE.md)**; to understand how every piece
+works and how to operate/extend it, read
 **[COMPONENT-GUIDE.md](COMPONENT-GUIDE.md)**; the release safety/honesty
 review with evidence is in [M12-RELEASE-REVIEW.md](M12-RELEASE-REVIEW.md)
-(v1.0), [V2-RELEASE-REVIEW.md](V2-RELEASE-REVIEW.md) (v2.0), and
-[V3-RELEASE-REVIEW.md](V3-RELEASE-REVIEW.md) (v3.0); the developer
-orientation is in [HANDOFF.md](HANDOFF.md).
+(v1.0), [V2-RELEASE-REVIEW.md](V2-RELEASE-REVIEW.md) (v2.0),
+[V3-RELEASE-REVIEW.md](V3-RELEASE-REVIEW.md) (v3.0), and
+[V4-RELEASE-REVIEW.md](V4-RELEASE-REVIEW.md) (v4.0 — including an honest
+disclosure of where the carry/basis sleeve's diversification target came up
+short, and why); the developer orientation is in [HANDOFF.md](HANDOFF.md).
 
 ```
 pip install -e ".[ui,search,dev]"
@@ -59,7 +65,7 @@ The sections below are the original **planning package** the engine was built fr
 | 11 | [technical-spec](11-technical-spec.md) | Implementation contracts: interfaces, schemas, flows |
 | 12 | [v2-roadmap](12-v2-roadmap.md) | Post-v1.0 roadmap: M13–M17 (catalog complete, `lqe live`, CI for the LLM/heavy-model path) |
 | 13 | [v3-roadmap](13-v3-roadmap.md) | Post-v2.0 roadmap: M18–M22 (one-click launch, institutional UI, live blotter, engine-room conversation) |
-| 14 | [v4-catalog-expansion](14-v4-catalog-expansion.md) | Post-v3.0 roadmap: M23–M26 (measured catalog diversification by return-driver sleeve, not headcount) |
+| 14 | [v4-catalog-expansion](14-v4-catalog-expansion.md) | Post-v3.0 roadmap: M23–M25 (measured catalog diversification by return-driver sleeve, not headcount — M25/microstructure deferred, renumbered per the doc's own instruction) |
 
 Mockups (open in a browser): [obsidian-desk-model-floor](mockups/obsidian-desk-model-floor.html) · [neural-engine-3d](mockups/neural-engine-3d.html) · [neural-engine-plasma](mockups/neural-engine-plasma.html) · [neural-engine-holo](mockups/neural-engine-holo.html) · [neural-engine-observatory](mockups/neural-engine-observatory.html)
 

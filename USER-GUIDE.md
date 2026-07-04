@@ -1,4 +1,4 @@
-# User Guide — `lightweight-quant-engine` v3.0
+# User Guide — `lightweight-quant-engine` v4.0
 
 A local, **paper-only** autonomous quant-research simulator. It runs on your
 machine, serves a browser UI on `localhost`, costs ~$0/month, and **cannot
@@ -93,8 +93,13 @@ benchmarks. Nothing becomes `validated` without a **PASS** here.
 ```
 lqe catalog
 ```
-51 models across 4 families; each is `unproven` until a gate PASS promotes it.
-Models needing the `models` extra show up transparently quarantined.
+104 models across 12 return-driver sleeves (trend/momentum, mean-reversion,
+cross-sectional, stat-arb, volatility, carry/basis, breakout/structure,
+seasonality, regime overlays, ML signals, allocators, plus the deliberately-
+weak control) — v4.0 (`docs/14-v4-catalog-expansion.md`) grew the catalog
+from 51 to 104 by adding genuinely different return drivers, not more trend
+clones. Each model is `unproven` until a gate PASS promotes it. Models
+needing the `models` extra show up transparently quarantined.
 
 ## 4. The autonomy loop (autopilot)
 

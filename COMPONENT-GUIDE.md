@@ -204,12 +204,15 @@ section:
   which feeds **exactly 3** of them (`trend_ma_cross`, `momentum_tsmom`,
   `meanrev_rsi`) into the autopilot's *searchable* surface. This is the
   intentionally small M8 proving surface.
-- **`models.catalog_scale.build_scaled_catalog`** — 51 models reached by
-  "**config, not per-model files**": presets × parameter grids over the same
-  native indicator engine, plus adapters for 8 heavier libraries (pairs
-  trading, HMM regime detection, change-point detection, supervised/LightGBM
-  signals, GARCH volatility, 3 portfolio optimizers). This is what
-  **`lqe catalog`** lists and what `lqe doctor`'s catalog check builds.
+- **`models.catalog_scale.build_scaled_catalog`** — **104 models** (v4.0,
+  up from 51 at v3.0 — §13) reached by "**config, not per-model files**":
+  presets × parameter grids over the same native indicator engine, adapters
+  for 9 heavier libraries (pairs trading, Johansen basket cointegration, HMM
+  regime detection, change-point detection, supervised/LightGBM signals,
+  GARCH volatility, 3 portfolio optimizers), native cross-sectional/stat-arb/
+  carry-basis strategies built on a multi-symbol engine extension, and a
+  ccxt-backed funding-rate data adapter. This is what **`lqe catalog`** lists
+  and what `lqe doctor`'s catalog check builds.
 
 Every model — in either catalog — is `unproven` until an actual `lqe
 validate` (or an autopilot step) gives it a gate PASS. Breadth never confers
@@ -264,8 +267,9 @@ for the exact command on a fresh machine.
   populates only if you call `build_desk_data` yourself with rows loaded from
   a catalog. Easy follow-up if you want it.
 - **`lqe autopilot`'s searchable surface (3 models) is much smaller than the
-  full catalog (51 models).** This is intentional per the roadmap (M8 proves
-  the loop; M11 scales the *catalog*, not yet the *searchable set*) — but if
+  full catalog (104 models, v4.0).** This is intentional per the roadmap (M8
+  proves the loop; M11/M23-M25 scale the *catalog*, not yet the *searchable
+  set*) — but if
   you expected `lqe autopilot` to explore all 51, it currently only explores
   those 3 by default (`autonomy/searchable.default_searchable_models`).
   `lqe live` (§11) uses a broader 10-model surface instead
@@ -296,7 +300,8 @@ scope gaps, not safety gaps.
 ```
 src/lqe/
   core/        event types, clock, engine/audit log, config+lockout, make_order
-  data/        ccxt (public data only) + CSV adapters, ingest pipeline, validation
+  data/        ccxt (public data only) + CSV adapters, ingest pipeline, validation,
+               funding_adapter.py (v4.0, perp funding-rate history)
   storage/     Parquet, DuckDB catalog, replay bundles, StateReader (read-only)
   portfolio/   Decimal accounting, position sizing, multi-instrument reconciliation
   execution/   PaperBroker (the only ExecutionAdapter), fills/slippage/commission
@@ -304,8 +309,10 @@ src/lqe/
   analytics/   metrics, DSR, PBO, ExperimentRegistry, tearsheet
   autonomy/    optimizer (Optuna), drift monitor, orchestrator, tools, narrator,
                promotion_gate, validator, books (sandbox/tracked), searchable
-  models/      manifest schema, catalog + intake/quarantine, catalog_scale (51),
-               plugins/ (native strategies), adapters/ (heavy-lib + indicators)
+  models/      manifest schema, catalog + intake/quarantine, catalog_scale (104,
+               v4.0), curation.py (correlation-redundancy check), plugins/
+               (native strategies), adapters/ (heavy-lib + indicators +
+               cross-sectional/stat-arb/carry-basis, v4.0)
   backtest/    one-shot runner wiring a ReplayClock + Session
   live/        ControlPlane — the UI's one write path; session.py (LiveSession)
   ui/          FastAPI app, Jinja2 templates, builder.py (composition seam),
@@ -563,3 +570,77 @@ test_ui_honesty.py`, closing the specific gap that M18–M21's own milestone-
 exit tests proved *that milestone's* feature worked, but nothing had yet
 re-asked "do all 9 non-negotiables still hold across the whole M18–M21
 surface at once" — see `V3-RELEASE-REVIEW.md` for the full evidence table.
+
+---
+
+## 13. v4.0 additions (docs/14 M23–M25): measured catalog diversification, not headcount
+
+Three milestones, all **additive to the catalog/data layer only** — no new
+UI surface, no changes to `risk/`, `execution/`, or `autonomy/promotion_gate`
+beyond the pre-existing signal→order pipeline every new model reuses
+unmodified; the M25 review (`V4-RELEASE-REVIEW.md`) re-proves the safety/
+honesty gate against everything M23–M25 added.
+
+**M23 — the diversification framework + sleeves A–E/G–I/L/M.** A new
+`Sleeve` taxonomy on `ModelManifest` (`models/manifest.py`) groups every
+model by its **return driver** (trend/momentum, mean-reversion, cross-
+sectional, stat-arb, volatility, carry/basis, breakout/structure,
+seasonality, regime overlay, ML signal, allocator, or `control` for the
+deliberately-weak `naive_always_long`) — a coarser, differently-motivated
+cut than the pre-existing `Family`. `analytics/diversification.py` computes
+the actual acceptance metric: average pairwise correlation, effective
+number of bets (eigenvalue-based), and sleeve dominance. The catalog's own
+engine gained a real capability along the way: `Context.universe_closes` +
+`Session.run` now accept a **merged, multi-symbol bar stream** — every bar
+updates a shared per-symbol close snapshot and reaches every strategy's
+`on_market`, but the entire risk/accounting/order pipeline stays gated to
+`bar.symbol == self._symbol` (a signal from a foreign bar is discarded,
+never ordered) — a strict no-op for every pre-v4 single-symbol caller. This
+unlocked genuine cross-sectional (`CrossSectionalAdapter`, ranks a universe
+each bar) and stat-arb-beyond-pairs (`DistancePairsAdapter`/
+`LeadLagAdapter`/`BasketArbAdapter`/`JohansenBasketAdapter`) strategies.
+Catalog grew 51→94 models.
+
+**M24 — the perp/funding data adapter + carry/basis sleeve (F).** A
+genuinely new data type: `FundingRateEvent` (a periodic ~8h settlement,
+distinct from `MarketEvent`'s per-bar cadence), fetched by
+`data/funding_adapter.py::CcxtFundingRateAdapter` (public
+`fetch_funding_rate_history` only, same read-only pattern as
+`ccxt_adapter.py`), validated (`validate_funding_rates`), stored
+(`storage/parquet_funding.py`, the same idempotent partitioned pattern as
+OHLCV), and ingested (`ingest_funding_rates`, reusing `Catalog.data_versions`
+with a `timeframe="funding"` sentinel — no schema migration). Four new
+strategies (`FundingCarryAdapter`, `FundingMomentumAdapter`,
+`BasisCarryAdapter`, `CrossExchangeFundingAdapter`) trade the spot leg only
+— **this engine's short-selling path is explicitly out of scope**
+(`portfolio/accounting.py` raises rather than silently going short), so
+these are honestly disclosed as directional bets gated by a funding/basis
+signal, not a market-neutral carry harvest. Catalog grew 94→104 models. The
+milestone's own exit criterion ("measurably low-correlation to directional
+sleeves") was measured for real and **not met** — carry_basis's cross-group
+correlation (0.4144) came out *higher* than the whole-catalog average
+(0.3742) in the same run, a direct, mechanical consequence of the long-only
+simplification (every sleeve F model's P&L is ordinary spot price movement
+when it holds a position, the same driver every directional model shares).
+Disclosed plainly in `docs/14`, `HANDOFF.md` §1e, and `V4-RELEASE-REVIEW.md`
+rather than reframed.
+
+**M25 — correlation curation, operationalized; diversification review;
+tag v4.0.** `models/curation.py::correlation_curation_check` (built at M23,
+left unwired) finally got run for real: `scripts/curation_report.py` walks
+the full 104-model catalog in registration order, backtesting each and
+checking it against every model registered before it. **Measured result:**
+46 of 97 non-degenerate models (47%) would have been flagged as redundant
+duplicates — a mix of genuine near-duplicate parameterizations (adjacent
+MACD/Donchian/TSMOM/ROC lookback variants) and **short-window behavioral
+convergence** (several conceptually distinct models — `naive_always_long`,
+a seasonality model, an allocator, a carry model — each entered once near
+the start of the ~1.4-day test window and simply held, so their equity
+curves all tracked raw BTC-USDT price identically for that one run;
+confirmed by hand that two of them finish with the *exact same* position
+size). This is reported as a real, honest, window-dependent diagnostic, not
+a production-grade gate. A dedicated safety test
+(`tests/safety/test_v4_no_shorting.py`) verifies — not just declares — that
+none of the 104 models ever emits a `SHORT` signal, by running the whole
+catalog through a real adversarial (uptrend-then-downtrend) multi-symbol
+backtest and inspecting the actual audit log.

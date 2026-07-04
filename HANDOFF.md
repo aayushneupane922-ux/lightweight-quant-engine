@@ -170,6 +170,8 @@ Full suite green (570 tests, 563 passed, 7 skipped, 0 failed); ruff/mypy/license
 
 Full suite green (**571 tests, 564 passed, 7 skipped, 0 failed**); ruff/mypy/license gate clean. Committed as `ac3fc0a`. New `SYSTEM-HANDOFF.md` written afterward (§1 above) as the dual-audience product explainer this ask also requested.
 
+**Clean team-review copy** (last part of the same ask): `dist/lqe-v4.0-dev-review/` — built with `git archive HEAD` at commit `3d533cd`, which by construction contains exactly the 321 git-tracked files (no `.venv`, no caches, no `.git`, no `data`/`runs`, no secrets — nothing to filter by hand since all of that is already gitignored). Added `dist/lqe-v4.0-dev-review/REVIEW-README.md` (only inside the snapshot, not the main repo) pointing external reviewers at `SYSTEM-HANDOFF.md` first, then `CLAUDE.md`→`GUARDRAILS.md`→`HANDOFF.md`→`COMPONENT-GUIDE.md`→the release-review docs for a code audit, plus the verify-all commands. Also zipped it (`dist/lqe-v4.0-dev-review.zip`, ~790KB). `/dist/` added to `.gitignore` (commit `a1d3751`) so this generated snapshot never gets committed as a repo-inside-the-repo. Regenerate by re-running the same `git archive HEAD | tar -x` + `REVIEW-README.md` + `shutil.make_archive` steps whenever a fresh snapshot is needed — nothing about this is automated/scripted, it was a one-off.
+
 ### 1b. This machine's local environment state (not portable, not committed)
 
 - **Ollama**: installed at `%LOCALAPPDATA%\Programs\Ollama\ollama.exe`. Not running as a persistent background service on this machine as of the end of this session — start it manually (`ollama serve`, or the `ollama app.exe` tray app) before using `--llm`/the `llm_integration`-marked tests. Model pulled: `llama3.2:3b` (~2GB).

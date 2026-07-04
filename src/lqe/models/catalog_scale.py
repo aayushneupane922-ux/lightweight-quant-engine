@@ -28,9 +28,15 @@ from lqe.models.adapters.changepoint_adapter import ChangePointAdapter
 from lqe.models.adapters.cross_sectional_adapter import CrossSectionalAdapter, Metric
 from lqe.models.adapters.hmm_regime_adapter import HmmRegimeAdapter
 from lqe.models.adapters.indicator_rule_adapter import IndicatorRuleAdapter
+from lqe.models.adapters.johansen_adapter import JohansenBasketAdapter
 from lqe.models.adapters.pypfopt_adapter import PyPortfolioOptAdapter
 from lqe.models.adapters.riskfolio_adapter import RiskfolioAdapter
 from lqe.models.adapters.skfolio_adapter import SkfolioOptimizerAdapter
+from lqe.models.adapters.stat_arb_adapter import (
+    BasketArbAdapter,
+    DistancePairsAdapter,
+    LeadLagAdapter,
+)
 from lqe.models.adapters.statsmodels_pairs_adapter import StatsmodelsPairsAdapter
 from lqe.models.adapters.supervised_signal_adapter import SupervisedSignalAdapter
 from lqe.models.base import Strategy
@@ -364,9 +370,91 @@ def _cross_sectional_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callab
     return entries
 
 
+def _stat_arb_manifest(model_id: str, one_liner: str, n: int) -> ModelManifest:
+    # docs/14 sleeve D (v4): stat-arb beyond simple OLS-hedge pairs. Same
+    # honest simplifications as sleeve C's `_cross_sectional_manifest` --
+    # long-only, and inert (never enough universe history) unless fed a
+    # genuinely interleaved multi-symbol bar stream.
+    return ModelManifest(
+        id=model_id, family="pairs", sleeve="stat_arb", one_liner=one_liner,
+        economic_rationale=(
+            "A statistical relationship across instruments is a different return driver "
+            "than any single instrument's own price path; the gate judges it, not breadth."
+        ),
+        data_needs=DataNeeds(instruments=n, kind="OHLCV"), oss_libs=["own"],
+        params_schema={"window": "int>1", "entry_z": "float", "exit_z": "float"},
+        failure_modes=[
+            "long-only simplification (this engine's short path is untested)",
+            "needs a genuinely interleaved multi-symbol bar stream to ever trade -- inert "
+            "(never enough universe history) when fed only this instrument's own bars",
+        ],
+    )
+
+
+def _stat_arb_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    universe = _synthetic_universe(symbol)
+    others = [sym for sym in universe if sym != symbol]
+    partner, leader = others[0], others[1]
+    basket = tuple(others)
+
+    entries: list[tuple[ModelManifest, Callable[[], Strategy]]] = []
+
+    def distance_factory(
+        mid: str, window: int, entry_z: float, exit_z: float
+    ) -> Callable[[], Strategy]:
+        return lambda: DistancePairsAdapter(
+            symbol=symbol, name=mid, partner=partner, window=window,
+            entry_z=entry_z, exit_z=exit_z,
+        )
+
+    for i, (window, entry_z, exit_z) in enumerate(
+        ((40, 2.0, 0.5), (60, 2.0, 0.5), (60, 2.5, 0.5))
+    ):
+        mid = f"stat_arb_distance_{i}"
+        one_liner = f"Distance-method pairs reversion vs {partner}."
+        entries.append((_stat_arb_manifest(mid, one_liner, 2), distance_factory(
+            mid, window, entry_z, exit_z
+        )))
+
+    def lead_lag_factory(
+        mid: str, lookback: int, entry_return: float, exit_return: float
+    ) -> Callable[[], Strategy]:
+        return lambda: LeadLagAdapter(
+            symbol=symbol, name=mid, leader=leader, lookback=lookback,
+            entry_return=entry_return, exit_return=exit_return,
+        )
+
+    for i, (lookback, entry_return, exit_return) in enumerate(
+        ((10, 0.02, 0.0), (20, 0.03, 0.0), (5, 0.015, 0.0))
+    ):
+        mid = f"stat_arb_lead_lag_{i}"
+        one_liner = f"Lead-lag follower of {leader}."
+        entries.append((_stat_arb_manifest(mid, one_liner, 2), lead_lag_factory(
+            mid, lookback, entry_return, exit_return
+        )))
+
+    def basket_factory(
+        mid: str, window: int, entry_z: float, exit_z: float
+    ) -> Callable[[], Strategy]:
+        return lambda: BasketArbAdapter(
+            symbol=symbol, name=mid, basket=basket, window=window,
+            entry_z=entry_z, exit_z=exit_z,
+        )
+
+    for i, (window, entry_z, exit_z) in enumerate(((40, 2.0, 0.5), (60, 2.0, 0.5))):
+        mid = f"stat_arb_basket_{i}"
+        one_liner = "Index/basket arb vs an equal-weight synthetic basket."
+        entries.append((_stat_arb_manifest(mid, one_liner, 1 + len(basket)), basket_factory(
+            mid, window, entry_z, exit_z
+        )))
+
+    return entries
+
+
 def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
     universe = _synthetic_universe(symbol)
     hedge = [10.0, 10.5, 10.2, 10.8]
+    johansen_basket = tuple(sym for sym in universe if sym != symbol)
 
     def factory(cls: Any, **kw: Any) -> Callable[[], Strategy]:
         return lambda: cls(symbol=symbol, **kw)
@@ -375,6 +463,9 @@ def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Str
     specs: list[tuple[str, Family, Sleeve, str, str, Callable[[], Strategy]]] = [
         ("pairs_ols", "pairs", "stat_arb", "OLS-hedge spread reversion.", "statsmodels",
          factory(StatsmodelsPairsAdapter, name="pairs_ols", hedge_closes=hedge)),
+        ("stat_arb_johansen", "pairs", "stat_arb", "Johansen basket-cointegration reversion.",
+         "statsmodels",
+         factory(JohansenBasketAdapter, name="stat_arb_johansen", basket=johansen_basket)),
         ("vol_garch", "volatility", "volatility", "GARCH(1,1) vol-regime filter.", "arch",
          factory(ArchVolAdapter, name="vol_garch")),
         ("regime_hmm", "regime", "regime_overlay", "2-state Gaussian HMM regime switch.",
@@ -413,7 +504,8 @@ def build_scaled_catalog(symbol: Symbol) -> tuple[ModelCatalog, list[IntakeResul
         catalog.register(manifest, factory)
         for manifest, factory in (
             *_native_entries(symbol), *_native_allocator_entries(symbol),
-            *_cross_sectional_entries(symbol), *_heavy_entries(symbol),
+            *_cross_sectional_entries(symbol), *_stat_arb_entries(symbol),
+            *_heavy_entries(symbol),
         )
     ]
     return catalog, results

@@ -20,6 +20,7 @@ from importlib.util import find_spec
 import pytest
 
 from lqe.models.adapters.arch_vol_adapter import ArchVolAdapter
+from lqe.models.adapters.johansen_adapter import JohansenBasketAdapter
 from lqe.models.adapters.pypfopt_adapter import PyPortfolioOptAdapter
 from lqe.models.adapters.riskfolio_adapter import RiskfolioAdapter
 from lqe.models.adapters.skfolio_adapter import SkfolioOptimizerAdapter
@@ -58,6 +59,18 @@ def test_statsmodels_pairs_adapter_quarantines_cleanly_without_the_extra() -> No
         _manifest("pairs_demo", "pairs", "statsmodels"),
         lambda: StatsmodelsPairsAdapter(
             symbol=SYMBOL, name="pairs_demo", hedge_closes=[10.0, 10.5, 10.2, 10.8]
+        ),
+    )
+    assert not result.passed
+    assert any("models" in r for r in result.reasons)
+
+
+@_absent("statsmodels")
+def test_johansen_basket_adapter_quarantines_cleanly_without_the_extra() -> None:
+    result = intake_check(
+        _manifest("stat_arb_johansen_demo", "pairs", "statsmodels"),
+        lambda: JohansenBasketAdapter(
+            symbol=SYMBOL, name="stat_arb_johansen_demo", basket=("ETH-USDT",)
         ),
     )
     assert not result.passed

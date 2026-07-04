@@ -212,11 +212,45 @@ construction.
   clear cross-sectional winner. **Measured result**: catalog 81 → **85
   models**; sleeves **10 → 11** (cross_sectional now populated), dominant
   sleeve (still trend_momentum) down slightly to **31.8%**.
-  **Still open**: stat-arb beyond simple pairs (sleeve D: Johansen basket
-  cointegration, lead-lag, index/basket arb) — genuinely unlocked now by
-  the same `universe_closes` extension (no further engine work needed),
-  but not yet built; a natural next increment reusing this session's
-  plumbing, not a new design question.
+  **Fourth pass: sleeve D, stat-arb beyond simple pairs** — reusing the
+  same `universe_closes` extension, no further engine work needed. Three
+  new native (numpy-only) adapters in
+  `models/adapters/stat_arb_adapter.py`: `DistancePairsAdapter` (the
+  classic Gatev/Goetzmann/Rouwenhorst distance method — normalizes both
+  legs to a common start and trades the raw normalized spread's z-score,
+  no OLS hedge ratio estimated, a genuinely different formulation from the
+  existing `pairs_ols`), `LeadLagAdapter` (a leader/follower spillover bet,
+  e.g. BTC→alt — follows the leader's own trailing return past a
+  threshold rather than fading a spread), `BasketArbAdapter` (index/basket
+  arb — this instrument vs an equal-weight synthetic basket of several
+  other symbols, z-scored like the distance method). Plus one heavy-lib
+  adapter, `models/adapters/johansen_adapter.py::JohansenBasketAdapter`
+  (`statsmodels.tsa.vector_ar.vecm.coint_johansen`, same lazy-import/
+  quarantine-transparent pattern as `StatsmodelsPairsAdapter`): estimates
+  a genuine cointegrating *vector* across an arbitrary-size basket (self +
+  N symbols) each time its rolling window is full, rather than a single
+  fixed hedge ratio against one partner; a numerically degenerate window
+  (near-singular sample covariance) is skipped rather than raising. All
+  four share sleeve C's honest simplifications (long-only; inert unless
+  fed a genuinely interleaved multi-symbol bar stream), declared in each
+  manifest's `failure_modes`. 8 native model configs (3 distance + 3
+  lead-lag + 2 basket, registered via `catalog_scale.py::
+  _stat_arb_entries`) plus 1 Johansen model (`stat_arb_johansen`, added to
+  `_heavy_entries`) — 9 new stat_arb-sleeve models atop the pre-existing
+  `pairs_ols`, for **10 stat_arb models total**. 24 new unit tests
+  (`test_stat_arb_adapter.py` ×18, `test_johansen_adapter.py` ×6, each
+  covering real triggered entries/exits, not just construction) plus 1
+  real hash-chain-verified multi-symbol backtest
+  (`test_stat_arb_backtest.py`) and 1 new heavy-lib quarantine test.
+  **Measured result**: catalog 85 → **94 models**; sleeves still 11 (no
+  new sleeve added — D populates the pre-existing `stat_arb` sleeve),
+  dominant sleeve (trend_momentum) down further to **28.7%** (27/94).
+  This closes out docs/14 §2's full M23 sleeve list (A–E, G–I, L, M).
+  **Still open before `m23-done`**: the exit gate's own deliverable — run
+  `analytics/diversification.py::diversification_score()` against real
+  backtested returns of the full 94-model catalog (not just today's
+  sleeve-label distribution) and check it against §7's acceptance
+  criteria, then the safety/honesty re-review, docs updates, and the tag.
 - **M24 · Perp/funding adapter + carry/basis sleeve (F).** The
   crown-jewel diversifiers. New funding data adapter (validated like all
   data), then the 4 carry/basis strategies. Exit gate: carry/basis models

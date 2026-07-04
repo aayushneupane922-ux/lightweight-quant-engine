@@ -86,11 +86,11 @@ def test_heavy_lib_models_quarantine_transparently_when_absent() -> None:
     reason="requires the full 'models' extra (docs/10 M13) to be installed",
 )
 def test_all_models_admit_once_the_full_models_extra_is_installed() -> None:
-    # 85 as of docs/14 (v4) M23's in-progress sleeve additions (was 51 at
+    # 94 as of docs/14 (v4) M23's in-progress sleeve additions (was 51 at
     # v3.0) -- bump this again when M24's carry/basis sleeve lands.
     catalog, _ = build_scaled_catalog(SYMBOL)
     assert not catalog.quarantined()
-    assert len(catalog.all()) == 85
+    assert len(catalog.all()) == 94
 
 
 def test_the_deliberately_weak_control_is_present() -> None:
@@ -125,6 +125,21 @@ def test_cross_sectional_sleeve_is_now_represented() -> None:
     xsec = [e for e in catalog.all() if e.manifest.sleeve == "cross_sectional"]
     assert len(xsec) >= 4
     assert all(e.manifest.id.startswith("xsec_") for e in xsec)
+
+
+def test_stat_arb_sleeve_goes_beyond_the_original_single_pairs_model() -> None:
+    # docs/14 sleeve D (v4): "beyond simple pairs" -- distance/lead-lag/
+    # basket-arb (native) plus Johansen basket cointegration (statsmodels),
+    # on top of the pre-existing single OLS-hedge pairs_ols model.
+    catalog, _ = build_scaled_catalog(SYMBOL)
+    stat_arb = [e for e in catalog.all() if e.manifest.sleeve == "stat_arb"]
+    assert len(stat_arb) >= 9  # pairs_ols + >=8 new sleeve D models
+    ids = {e.manifest.id for e in stat_arb}
+    assert "pairs_ols" in ids
+    assert "stat_arb_johansen" in ids
+    assert any(i.startswith("stat_arb_distance_") for i in ids)
+    assert any(i.startswith("stat_arb_lead_lag_") for i in ids)
+    assert any(i.startswith("stat_arb_basket_") for i in ids)
 
 
 def test_admitted_models_run_a_deterministic_backtest() -> None:

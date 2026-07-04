@@ -269,6 +269,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, [role="option"]:focu
 .palette-hint { font-family:var(--data); }
 .palette-overlay { position:fixed; inset:0; background:rgba(7,9,13,.72); z-index:100;
   display:flex; justify-content:center; padding-top:12vh; }
+.palette-overlay[hidden] { display:none; }
 .palette { width:min(520px, 90vw); background:var(--slab); border:1px solid var(--ridge);
   border-radius:7px; padding:10px; box-shadow:0 20px 60px rgba(0,0,0,.5); max-height:70vh;
   display:flex; flex-direction:column; }

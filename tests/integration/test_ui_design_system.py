@@ -129,6 +129,18 @@ def test_command_palette_hint_shown_in_status_rail() -> None:
     assert "Ctrl/" in _client().get("/").text
 
 
+def test_command_palette_overlay_is_actually_hidden_by_default() -> None:
+    # regression: `.palette-overlay { display:flex; ... }` alone always wins
+    # over the browser's default `[hidden] { display:none }` UA rule (same
+    # specificity, author beats UA), so the JS's `overlay.hidden = true`
+    # toggle (desk.js `close()`) silently did nothing and the palette stayed
+    # visible on every page load. Found by actually rendering the page in a
+    # browser, not by reading the HTML -- a curl-only check can't see this.
+    block = re.search(r"\.palette-overlay\[hidden\]\s*\{[^}]*\}", _DESK_CSS)
+    assert block is not None, "no CSS rule forces .palette-overlay to hide when [hidden]"
+    assert "display:none" in block.group(0).replace(" ", "")
+
+
 def test_candlestick_series_uses_fill_vs_outline_not_hue_alone() -> None:
     # docs/13 M19 a11y: bullish/bearish must survive colorblindness, so the
     # up candle is hollow/outline-only (near-transparent fill + a colored

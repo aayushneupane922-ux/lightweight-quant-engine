@@ -4,9 +4,22 @@ A **local, paper-only, autonomous quant research simulator**: a large catalog of
 
 **The honest core:** exploration is free in the sandbox, but the equity curve you *watch* (the tracked book) only accepts changes that pass out-of-sample validation, and it de-risks — never chases — on degradation. The **system** learns on history, runs the validated result live, watches live for decay, and re-learns on history when it decays; the LLM steers and explains, the math decides.
 
-## Status: v2.0 (v1.0's M0–M12 plus v2.0's M13–M17, all complete)
+## Status: v3.0 (v1.0's M0–M12, v2.0's M13–M17, v3.0's M18–M22, all complete)
 
-The engine is built — M0–M12 (v1.0) and M13–M17 (v2.0, `docs/12-v2-roadmap.md`: a complete catalog, `lqe live` as a real CLI subcommand with resume, and real CI coverage for the LLM/heavy-model path) done, verified, and tagged. **To run it, read [USER-GUIDE.md](USER-GUIDE.md)**; to understand how every piece works and how to operate/extend it, read **[COMPONENT-GUIDE.md](COMPONENT-GUIDE.md)**; the release safety/honesty review with evidence is in [M12-RELEASE-REVIEW.md](M12-RELEASE-REVIEW.md) (v1.0) and [V2-RELEASE-REVIEW.md](V2-RELEASE-REVIEW.md) (v2.0); the developer orientation is in [HANDOFF.md](HANDOFF.md).
+The engine is built — M0–M12 (v1.0), M13–M17 (v2.0, `docs/12-v2-roadmap.md`: a
+complete catalog, `lqe live` as a real CLI subcommand with resume, and real CI
+coverage for the LLM/heavy-model path), and M18–M22 (v3.0,
+`docs/13-v3-roadmap.md`: a one-click launcher with onboarding + GUI-triggered
+jobs, the Obsidian Desk institutional design system, a live trade blotter you
+can watch fill by fill, and the "Engine Room" — a turn-by-turn Strategist/
+Optimizer/Judge/Autopilot/Risk conversation feed) — done, verified, and
+tagged. **To run it, read [USER-GUIDE.md](USER-GUIDE.md)**; to understand how
+every piece works and how to operate/extend it, read
+**[COMPONENT-GUIDE.md](COMPONENT-GUIDE.md)**; the release safety/honesty
+review with evidence is in [M12-RELEASE-REVIEW.md](M12-RELEASE-REVIEW.md)
+(v1.0), [V2-RELEASE-REVIEW.md](V2-RELEASE-REVIEW.md) (v2.0), and
+[V3-RELEASE-REVIEW.md](V3-RELEASE-REVIEW.md) (v3.0); the developer
+orientation is in [HANDOFF.md](HANDOFF.md).
 
 ```
 pip install -e ".[ui,search,dev]"

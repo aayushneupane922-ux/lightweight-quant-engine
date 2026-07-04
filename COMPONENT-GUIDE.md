@@ -4,8 +4,8 @@ This is the deep-dive companion to [USER-GUIDE.md](USER-GUIDE.md) (which is a
 command quickstart). USER-GUIDE tells you *what to type*; this tells you *what
 happens when you do*, so you can operate, debug, and extend the product
 yourself. Every claim below was verified against the running code on
-2026-07-03, not recalled from memory — where the two disagree, trust this file
-less than `grep`.
+2026-07-03/04, not recalled from memory — where the two disagree, trust this
+file less than `grep`.
 
 ---
 
@@ -41,7 +41,7 @@ KILL/FREEZE/AUTOPILOT toggles. Nothing anywhere places a real order; the
                                    │
                                    ▼
                      Obsidian Desk (FastAPI, 127.0.0.1)
-                     Floor·Catalog·Research·Intel·Engine·Risk·Daily
+              Floor·Catalog·Research·Intel·Engine·Risk·Daily·Blotter
 ```
 
 ---
@@ -75,19 +75,20 @@ never reachable off loopback.
 
 ## 3. The Obsidian Desk — what each view actually shows
 
-All seven views render from the **same** `StateReader`, which reconstructs
+All eight views render from the **same** `StateReader`, which reconstructs
 everything by replaying the audit log you pointed `lqe desk`/`run.py` at. If
 you don't pass `--audit`, every view is honestly empty rather than faked.
 
 | View | Key | Shows | Backed by |
 |---|---|---|---|
-| **Floor** | F1 | The "model floor" grid — one card per model in the **default catalog** (11 models: `trend_ma_cross`, `trend_macd_cross`, `donchian_breakout`, `trend_adx_filter`, `momentum_tsmom`, `momentum_roc`, `meanrev_zscore`, `meanrev_bollinger`, `meanrev_rsi`, `vol_breakout`, `naive_always_long`), each labeled `ARMED`/`unproven` with a live-fill sample size. | `models.registry.build_default_catalog` + replayed `SignalEvent`/`FillEvent`s |
+| **Floor** | F1 | The "model floor" grid — one card per model in the **default catalog** (11 models: `trend_ma_cross`, `trend_macd_cross`, `donchian_breakout`, `trend_adx_filter`, `momentum_tsmom`, `momentum_roc`, `meanrev_zscore`, `meanrev_bollinger`, `meanrev_rsi`, `vol_breakout`, `naive_always_long`), each labeled `ARMED`/`unproven` with a live-fill sample size, plus (v3.0) a hero price/equity chart (vendored TradingView Lightweight Charts). | `models.registry.build_default_catalog` + replayed `SignalEvent`/`FillEvent`s |
 | **Catalog** | F2 | The full model library with one-liners, licenses (`own`/library name), and status. Same 11-model default catalog (**not** the 51-model scaled one — see §5 nuance below). | `build_default_catalog` |
 | **Research** | F3 | Gate evidence: Sharpe/DSR/PBO/max-DD/trades/cost-bps/verdict per experiment. Empty until you wire an `ExperimentRegistry` in (see §8 nuance). | `ExperimentRow` list passed into `build_desk_data` |
-| **Intel** | F4 | Decision cards: one per autopilot step — `HYPOTHESIS → SEARCH (n trials) → VALIDATE: PASS/FAIL` with the gate's actual failure reasons spelled out, plus the autopilot ON/OFF toggle and "take the wheel" note. | replayed `HypothesisEvent`/`TrialEvent`/`ValidationEvent`/`NarrationEvent` |
+| **Intel** | F4 | Two complementary views of the same autonomy events: (v3.0) the **"Engine Room"** — a turn-by-turn conversation feed (Strategist proposes, Optimizer's trials roll up into one best-trial card per hypothesis, Judge validates with PASS/FAIL coloring, Autopilot narrates, Risk kills/de-risks), replayable via a timeline scrubber — sitting above the original per-hypothesis **decision cards**: `HYPOTHESIS → SEARCH (n trials) → VALIDATE: PASS/FAIL` with the gate's actual failure reasons spelled out, plus the autopilot ON/OFF toggle and "take the wheel" note. | replayed `HypothesisEvent`/`TrialEvent`/`ValidationEvent`/`PromotionEvent`/`DeRiskEvent`/`ControlEvent`/`NarrationEvent`, via `StateReader.conversation(at_seq)` (v3.0) and the pre-existing decision-card reducer |
 | **Engine** | F7 | The 3D-style neural-web: a dependency-free `<canvas>` force-graph — `Market_Feed` node wired to every model node plus a purple `Meta-layer` node, colored by conviction/state, with an Inspector legend and a **timeline-replay scrubber** (`seq N/total`, deterministic). | `StateReader.graph(at_seq)` via `/api/graph` |
 | **Risk** | F5 | Kill-switch state (`ACTIVE` green = trading permitted / kill not engaged, `KILLED` red = halted) and any active risk breaches. | `ControlPlane`/`KillSwitch` |
 | **Daily** | F6 | Per-session paper P/L, trades, max intraday drawdown, and whether an independent reconciliation matched the running ledger. Empty until a session-close reconciliation record exists. | replayed reconciliation records |
+| **Blotter** (v3.0) | F8 | The full order lifecycle, one row per fill: intent → risk decision (`APPROVE`/`CLAMP`/`REJECT`, with the rule that fired) → fill or reject — nothing vanishes silently — plus a per-model position/realized-P&L reconciliation table below. Model/symbol/side filters and an off-by-default sound-on-fill toggle. | `StateReader.blotter()`/`.reconciliation()`, correlated by `intent_id` across `OrderIntent`/`RiskDecision`/`Order`/`FillEvent` |
 
 **The one write path**: every mutating action in the UI (KILL, FREEZE,
 AUTOPILOT ON/OFF, CLEAR_KILL) goes through `POST /api/control`, which is the
@@ -306,12 +307,14 @@ src/lqe/
   models/      manifest schema, catalog + intake/quarantine, catalog_scale (51),
                plugins/ (native strategies), adapters/ (heavy-lib + indicators)
   backtest/    one-shot runner wiring a ReplayClock + Session
-  live/        ControlPlane — the UI's one write path
-  ui/          FastAPI app, Jinja2 templates, builder.py (composition seam)
+  live/        ControlPlane — the UI's one write path; session.py (LiveSession)
+  ui/          FastAPI app, Jinja2 templates, builder.py (composition seam),
+               theme/vendor/ (TradingView Lightweight Charts, Apache-2.0)
   viz3d/       the dependency-free canvas force-graph JS
-  ops/         lqe doctor + lqe backup
+  ops/         lqe doctor + lqe backup + jobs.py (JobManager, v3.0 — the GUI's
+               background ingest/backtest/live triggers)
   cli.py       argparse wiring for every `lqe <command>`
-run.py         one-command local launcher (wraps `lqe desk`)
+run.py / run.bat  one-command local launcher (wraps `lqe desk`) + onboarding (v3.0)
 scripts/       license_gate.py, generate_third_party_notices.py, make_demo_run.py
 docs/          the full spec (00-11) + docs/archive (superseded, reference only)
 tests/         unit/ property/ parity/ safety/ honesty/ integration/
@@ -482,3 +485,81 @@ Everything above is still paper-only end to end: `PaperBroker` is still the
 only `ExecutionAdapter`, `make_order` is still the only `Order` constructor,
 ccxt is read-only public data, and there is still no kill/clear/order tool in
 the LLM's vocabulary.
+
+---
+
+## 12. v3.0 additions (docs/13 M18–M21): launch, visibility, institutional polish
+
+Four milestones, all **additive UX/visibility only** — none touch the safety
+core (`risk/`, `execution/`, `autonomy/promotion_gate`, `kill_switch`); the
+M22 review (`V3-RELEASE-REVIEW.md`) re-proves every one of the 9
+non-negotiables against all four.
+
+**M18 — zero-CLI launch.** `run.py`/`run.bat` now do first-run setup in a
+background thread while the desk serves a plain-language onboarding screen
+(`ops/jobs.py::LaunchState`, a middleware-level swap in `ui/app.py` — never a
+blank page, never a stack trace) instead of the real dashboard, becoming
+reachable automatically once `ready` flips. The bigger addition is
+`ops/jobs.py`'s `JobManager`: it lets the desk itself trigger **ingest /
+backtest / live start-stop** via `POST /api/jobs/*`, instead of requiring a
+terminal. Every job calls the *exact same* functions the CLI already used
+(`data.ingest.ingest`, `backtest.runner.run_backtest`,
+`live.session.LiveSession`, itself extracted from the old `_cmd_live` so the
+CLI and the GUI share one implementation) from a background thread — this
+adds no new order-construction path, only a new caller of code that already
+routes through `make_order`/`RiskModel` (verified structurally:
+`tests/safety/test_v3_surfaces.py`). `run.bat` exists because double-clicking
+`run.py` directly on Windows silently opens/closes a console using whatever
+Python happens to be file-associated (often the wrong one) — `run.bat` calls
+this project's own `.venv` explicitly.
+
+**M19 — Obsidian Desk, applied.** The design system had actually been built
+to spec since M7–M10; this milestone's real scope turned out narrower than
+the roadmap text implied. What's new: a hero price/equity chart on the Floor
+view using **vendored** TradingView Lightweight Charts v5.2.0
+(`ui/theme/vendor/`, Apache-2.0 — vendored rather than CDN-loaded because the
+desk is `127.0.0.1`-only with no outbound network at runtime, same rule as
+the pre-existing `viz3d/vendor/`), a `Ctrl`/`Cmd`+`K` command palette, toast
+notifications for control/job actions, and a genuine computed AA-contrast
+audit that caught `--mute` failing the spec's literal 4.5:1 ratio (fixed,
+same hue, not a redesign).
+
+**M20 — live trade blotter.** `StateReader.blotter()`/`.reconciliation()`
+reconstruct the full order lifecycle straight from events already in the
+audit log — no new event type needed. The correlation key is `intent_id`,
+already shared by `OrderIntent.intent_id`, `RiskDecision.intent_ref`, and
+`Order.intent_ref`/`Order.order_id = f"order:{intent_id}"` (a pre-existing
+`make_order.py` convention). One `BlotterRow` per fill; a REJECTed or
+approved-but-unfilled intent still gets exactly one no-fill row — nothing
+silently disappears. Per-fill P&L is a `realized_before`/`realized_after`
+snapshot delta taken around the *existing* `_StrategyAgg.on_buy`/`on_sell`
+call already made for `model_cells()` — not a second, potentially-divergent
+P&L computation. Verified against a **real live fleet run** (`JobManager.
+start_live` with the offline CSV adapter seam), not only a hand-built audit
+fixture, specifically because the milestone spec worried about "the display
+works but the plumbing doesn't."
+
+**M21 — the "Engine Room" conversation feed.** `StateReader.conversation
+(at_seq=None)` reconstructs a turn-by-turn dialogue from the same autonomy
+events M9's decision cards already read — added *alongside* those cards, not
+replacing them. `TrialEvent`s aggregate into one Optimizer card per
+hypothesis window (the best `oos_metric`, never one message per trial);
+promotions are attributed to the **Judge** ("the Judge decides"), not the
+Strategist; `ValidationEvent` carries a `verdict` field so the UI can color
+the Judge's message by outcome rather than a fixed hue. A new
+`#convo-scrubber` timeline control mirrors the Engine 3D view's existing
+scrubber UX exactly (`GET /api/conversation?at_seq=`, same deterministic-
+replay pattern as `/api/graph`). Internal correlation IDs (`hypo_id`,
+`candidate_id`, `trial_id`) are used only as grouping keys and never appear
+in a message's default text — a native `<details>` element discloses the
+Judge's raw evidence dict as plain `k: v` lines for anyone who wants it.
+Verified against a **real `lqe autopilot` campaign** end to end (a real
+replay bundle, 3 real hypothesis cycles, served via `lqe desk`), confirming
+both the rendered feed and the scrubber's deterministic mid-campaign replay.
+
+**What M22 (this review round) added on top:** `tests/safety/
+test_v3_surfaces.py` (11 tests) and 6 tests appended to `tests/honesty/
+test_ui_honesty.py`, closing the specific gap that M18–M21's own milestone-
+exit tests proved *that milestone's* feature worked, but nothing had yet
+re-asked "do all 9 non-negotiables still hold across the whole M18–M21
+surface at once" — see `V3-RELEASE-REVIEW.md` for the full evidence table.

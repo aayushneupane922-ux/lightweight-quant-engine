@@ -117,8 +117,8 @@ product as of M7). Do not hand-edit; regenerate instead.
 - License: Apache License 2.0
 - URL: https://github.com/aio-libs/multidict
 
-## numpy 2.2.6
-- License: BSD License
+## numpy 2.4.6
+- License: BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0
 - URL: https://numpy.org
 
 ## optuna 4.9.0

@@ -2,13 +2,13 @@
 
 **Purpose:** orient a developer (human or a fresh Claude Code session) picking this up cold. Read this, then `CLAUDE.md` (constitution) + `GUARDRAILS.md` + `WORKFLOW.md`, then `docs/10-production-roadmap.md` (the milestone map, kept checked-off as work lands).
 
-## 1. Status (v2.0 shipped; v3.0 in progress — M21/5 done)
+## 1. Status (v3.0 shipped — M0–M22 all done)
 
-A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 (v1.0)** and **M13 through M17 (v2.0, `docs/12-v2-roadmap.md`)** are complete, verified, committed, and tagged. **v3.0 (`docs/13-v3-roadmap.md`, M18–M22) is in progress: M18, M19, M20, and M21 are done and tagged; only M22 (hardening + release) is left.** v4.0 (`docs/14-v4-catalog-expansion.md`, M23–M26) is scoped but not started at all. See §1a/§1c.
+A **local, paper-only, autonomous quant-research simulator** — built milestone by milestone against the `docs/` spec. **M0 through M12 (v1.0)**, **M13 through M17 (v2.0, `docs/12-v2-roadmap.md`)**, and **M18 through M22 (v3.0, `docs/13-v3-roadmap.md`)** are all complete, verified, committed, and tagged. v4.0 (`docs/14-v4-catalog-expansion.md`, M23–M26) is scoped but not started at all. See §1a/§1c.
 
-- **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, `m13-done` … `m17-done`, `v2.0`, then `m18-done`, `m19-done`, `m20-done`, `m21-done`.
-- **Health:** full suite green (409 tests, 8 correctly skipped as of `m21-done`), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`), license gate PASS (50 runtime deps), git tree clean.
-- **Release evidence:** `M12-RELEASE-REVIEW.md` (v1.0) and `V2-RELEASE-REVIEW.md` (v2.0, M13–M16) — both full §19.1 safety/honesty reviews with evidence. v3.0 doesn't have its own review yet — that's M22's job, not done until v3.0 tags. Runtime guide: `USER-GUIDE.md` (not yet updated for v3/M18–M21 — that's also M22's job per `docs/13`'s own plan). Deep-dive on every component: **`COMPONENT-GUIDE.md`** (also not yet updated for M18–M21 — same reason).
+- **Tags:** `m0-done` … `m12-done`, `v0.1`, `v1.0`, `m13-done` … `m17-done`, `v2.0`, `m18-done` … `m21-done`, then `v3.0`.
+- **Health:** full suite green (420 passed, 6 correctly skipped — all environment-conditional heavy-lib quarantine-inversion pairs, as of `v3.0`), ruff clean, `mypy --strict` clean (`src` + `scripts` + `run.py`, 115 source files), license gate PASS (50 runtime deps), git tree clean.
+- **Release evidence:** `M12-RELEASE-REVIEW.md` (v1.0), `V2-RELEASE-REVIEW.md` (v2.0, M13–M16), and `V3-RELEASE-REVIEW.md` (v3.0, M18–M21) — three full §19.1 safety/honesty reviews with evidence. Runtime guide: `USER-GUIDE.md` (updated for v3.0 at M22). Deep-dive on every component: **`COMPONENT-GUIDE.md`** (updated for v3.0 at M22 — new §12 covers M18–M21 at the same depth as §11's v2.0 write-up).
 - **Branch:** `master`. Every milestone = one commit + a `mN-done` tag. Git identity is a local placeholder (set per-repo, flagged to the owner).
 
 ### 1a. v2.0: what shipped (docs/12-v2-roadmap.md)
@@ -63,9 +63,32 @@ The owner sent `DEVELOPER-HANDOFF.md` (a standalone, non-agent-jargon briefing o
 - **Deterministic replay**: new `GET /api/conversation?at_seq=` + a timeline scrubber (same UX as the Engine 3D view's) — verified live that scrubbing mid-campaign correctly reproduces a partial trial count, not the final one.
 - 18 new tests. **Verified live against a real `lqe autopilot` campaign** (not a synthetic fixture): built a real replay bundle, ran 3 real hypothesis cycles, served the resulting audit log, and confirmed the feed, the scrubber, and the kill control all worked end to end with real Sharpe/DSR/PBO numbers. Full detail: `docs/13-v3-roadmap.md`'s M21 section.
 
-**Only M22 (v3 hardening + release) is left before `v3.0` tags.**
+**M22 (v3 hardening + release) is done — `v3.0` is tagged.**
+- Extended safety coverage: `tests/safety/test_v3_surfaces.py` (11 new tests)
+  proves the M18 GUI job launcher constructs no `Order`/`PaperBroker` and
+  never reaches `lqe.execution`/`lqe.autonomy` directly; the M20 blotter's
+  kill button is reachable and its API read-only; the M21 conversation
+  feed's API is read-only + deterministically replayable and its JS never
+  posts to a write path.
+- Extended honesty coverage: 6 new tests in `tests/honesty/test_ui_honesty.py`
+  — blotter/intel carry their own honesty tags, both show a reason instead
+  of a blank panel when empty, and the conversation feed's *default* view
+  leaks no cryptic internal IDs or raw JSON (checked against a real
+  autopilot campaign's rendered HTML, with the power-user `<details>`
+  disclosure correctly exempted).
+- `V3-RELEASE-REVIEW.md` (new) re-runs the full §19.1 safety/honesty review
+  scoped to M18–M21, mirroring `V2-RELEASE-REVIEW.md`'s format. Confirmed
+  the vendored TradingView Lightweight Charts license documentation (done
+  correctly at M19) still holds; regenerated `THIRD_PARTY_NOTICES.md` (one
+  incidental `numpy` version diff, still `ALLOW`-tier).
+- `README.md`/`USER-GUIDE.md`/`COMPONENT-GUIDE.md` updated for real: the
+  Blotter view and Engine Room conversation feed are now documented in the
+  views tables, the GUI job launcher + onboarding gate in the relevant
+  sections, and a new COMPONENT-GUIDE §12 covers all four v3.0 milestones.
+- Full suite: 420 passed, 6 skipped, 0 failed; ruff/mypy/license gate all
+  green. Tagged `v3.0`.
 
-**v4 (`docs/14-v4-catalog-expansion.md`, M23–M26) is fully scoped but zero work has started.** It depends on nothing in v3, so it could in principle be worked in parallel/before v3 finishes if the owner wants — not assumed, ask.
+**v4 (`docs/14-v4-catalog-expansion.md`, M23–M26) is fully scoped but zero work has started.** It depends on nothing in v3, so it can be picked up whenever the owner wants next — not assumed, ask.
 
 ### 1b. This machine's local environment state (not portable, not committed)
 
@@ -107,6 +130,7 @@ CI (`.github/workflows/ci.yml`) now has **two jobs**: `check` (installs `.[ui,se
 - **M19** — institutional UI/UX polish: vendored TradingView Lightweight Charts (owner's call) for a Floor hero chart (candlestick + streaming equity, fill-vs-outline colorblind-safe), new `StateReader.price_series`/`.equity_curve` + `/api/chart/*`, a ⌘K/Ctrl+K command palette, `aria-live` toasts, a real AA-contrast audit (fixed `--mute`), focus rings, sticky table headers, tabular-nums. Found the design system's tokens/layout already matched spec since M7-M10.
 - **M20** — live trade blotter: new `/blotter` view (`F8`) + `StateReader.blotter()`/`.reconciliation()` reconstruct the full intent → risk decision → fill/reject lifecycle straight off events already in the audit log, one row per fill; unmissable feedback (flash/toast/Floor-cell-pulse/optional sound); an honest, deterministic empty-state reason; `/ws` now pushes blotter rows too. Verified the real live fleet's fills genuinely reach the blotter (not just a display test) via a dedicated real-fleet integration test.
 - **M21** — "Engine Room" conversation feed: new `StateReader.conversation()` reconstructs a readable Strategist/Optimizer/Judge/Autopilot/Risk dialogue on `/intel` (alongside, not replacing, M9's decision cards), color-coded with the Judge's card verdict-driven (long/short by outcome); new `GET /api/conversation?at_seq=` + a timeline scrubber (same pattern as the Engine 3D view's). Verified against a real `lqe autopilot` campaign, including deterministic mid-campaign replay.
+- **M22** — v3 hardening + release: extended `tests/safety`/`tests/honesty` to the M18–M21 surfaces (17 new tests total), re-ran the §19.1 safety/honesty review with evidence (`V3-RELEASE-REVIEW.md`), regenerated `THIRD_PARTY_NOTICES.md`, and updated `README.md`/`USER-GUIDE.md`/`COMPONENT-GUIDE.md` for real. Tagged `v3.0`.
 
 ## 3. Key deviations from the named spec (all deliberate + flagged)
 
@@ -135,14 +159,14 @@ Run `docs/archive/19` §19.1 safety review after any milestone or any change tou
 
 ## 5. What's left
 
-**Immediate next step: M22 (v3 hardening + release), `docs/13-v3-roadmap.md` — the last milestone before `v3.0` tags.** M18–M21 are all done. M22 is: extend `tests/safety`+`tests/honesty` to the M18–M21 surfaces, re-run the §19.1 safety/honesty review with evidence (`V3-RELEASE-REVIEW.md`), and update `USER-GUIDE.md`/`COMPONENT-GUIDE.md` for real (both have been deferred to this milestone by design since M18, not by oversight — check `docs/13`'s own M22 checklist for the exact scope before starting).
+**v1.0, v2.0, and v3.0 are all shipped. The only scoped work remaining is v4.**
 
-After v3.0 (or in parallel, if the owner prefers — see §1c): **v4
-(`docs/14-v4-catalog-expansion.md`, M23–M26)** — measured catalog
+**Next: v4 (`docs/14-v4-catalog-expansion.md`, M23–M26)** — measured catalog
 diversification by return-driver sleeve, not headcount; a correlation-
 curation intake step; a trial-count update to the promotion gate so the
 bigger catalog doesn't manufacture false positives. Zero work started on
-this yet.
+this yet — depends on nothing in v3, so it's ready to pick up whenever the
+owner wants next (ask which of the 4 milestones to start with, don't assume).
 
 Check `git tag -l` for the latest `mN-done` to see how far execution has
 gotten past this file's own last edit — this section is not guaranteed to

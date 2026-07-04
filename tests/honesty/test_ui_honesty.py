@@ -99,3 +99,86 @@ def test_research_marks_a_failing_gate_and_low_sample() -> None:
     html = _client().get("/research").text
     assert "FAIL" in html
     assert "OUT-OF-SAMPLE" in html
+
+
+# --- M22: honesty coverage for the M18-M21 surfaces ---------------------
+
+
+def _client_with_autopilot() -> TestClient:
+    from lqe.autonomy.optimizer import OptunaOptimizer
+    from lqe.autonomy.orchestrator import Orchestrator
+    from lqe.autonomy.promotion_gate import GateThresholds, PromotionGate
+    from lqe.autonomy.searchable import default_searchable_models
+    from lqe.autonomy.validator import Validator
+
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    bars = []
+    price = Decimal("100")
+    for i in range(220):
+        price = price + Decimal("1") if (i // 11) % 2 == 0 else price - Decimal("1")
+        bars.append(
+            MarketEvent(
+                exchange="binance", symbol=SYMBOL, timeframe="1m",
+                ts_open=start + timedelta(minutes=i),
+                o=price, h=price + Decimal("1"), l=price - Decimal("1"), c=price,
+                v=100.0, source_version="test",
+            )
+        )
+    orch = Orchestrator(
+        validator=Validator(n_folds=2, random_control_reps=3),
+        gate=PromotionGate(thresholds=GateThresholds(min_periods=1, min_trades=1)),
+        optimizer=OptunaOptimizer(), searchable_models=default_searchable_models(),
+        bars=bars, symbol=SYMBOL, starting_cash=Decimal("10000"), seed=1, n_trials=4,
+    )
+    orch.run(steps=2, start=start)
+    data = DeskData(state_reader=StateReader(orch.engine.audit.records), control=ControlPlane())
+    return TestClient(create_app(data))
+
+
+def test_blotter_carries_its_own_simulated_tag_and_read_only_narration() -> None:
+    html = _client().get("/blotter").text
+    assert "SIMULATED" in html
+    assert "constructs no order" in html.lower()
+
+
+def test_intel_carries_observe_only_tag_and_gate_language() -> None:
+    html = _client().get("/intel").text
+    assert "OBSERVE-ONLY" in html
+    assert "cannot" in html.lower() or "can neither" in html.lower()
+
+
+def test_blotter_shows_a_reason_when_empty_not_a_blank_panel() -> None:
+    html = _client().get("/blotter").text
+    assert 'id="blotter-empty"' in html
+    # the honest-empty-state helper always returns a non-empty reason string
+    assert re.search(r'id="blotter-empty"[^>]*>[^<]*\S', html)
+
+
+def test_conversation_feed_shows_a_reason_when_empty_not_a_blank_panel() -> None:
+    html = _client().get("/intel").text
+    assert "No autonomy steps recorded yet" in html
+
+
+@pytest.mark.filterwarnings("ignore")
+def test_conversation_feed_renders_no_cryptic_ids_in_the_default_view() -> None:
+    # tests/unit/test_state_reader.py already proves ConversationMessage.text
+    # never carries raw IDs; this pins the same guarantee one layer up, at
+    # the actual rendered Jinja HTML for a real campaign, since a template
+    # change could leak `hypo_id`/`candidate_id`/`trial_id` into the default
+    # (always-visible) view even if the underlying message text stays clean.
+    # The Judge's raw `evidence` dict is deliberately exempt -- it's the
+    # power-user disclosure behind <details>, per the M21 spec's own "no
+    # code/JSON/cryptic IDs in the default view, Details for power users".
+    html = _client_with_autopilot().get("/intel").text
+    assert '<div class="convo"' in html  # the feed actually rendered content
+    visible = re.sub(r"<details>.*?</details>", "", html, flags=re.DOTALL)
+    for banned in ("hypo_id", "candidate_id", "trial_id", "cand:", "hypo:"):
+        assert banned not in visible, f"{banned!r} leaked into the default conversation view"
+
+
+@pytest.mark.filterwarnings("ignore")
+def test_conversation_feed_carries_no_raw_json_blob() -> None:
+    html = _client_with_autopilot().get("/intel").text
+    # the Judge's evidence is rendered as plain "k: v" lines inside <details>,
+    # never as a raw dict/JSON dump
+    assert "{'" not in html and '{"' not in html

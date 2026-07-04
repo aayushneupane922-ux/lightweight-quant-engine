@@ -324,16 +324,46 @@ read the same audit events honestly, from the same `StateReader`.
   ruff + mypy + license gate green; `git tag m21-done`.
 
 ## M22 — v3 hardening, review & tag  · M · Dep: all
-- [ ] Extend `tests/safety` + `tests/honesty` to the new surfaces
+- [x] Extend `tests/safety` + `tests/honesty` to the new surfaces
   (launcher, blotter, conversation): no `Order` path, no CLI/stdout
   rendered, honesty labels present, kill reachable, `127.0.0.1` only.
-- [ ] Re-run the full safety/honesty review **with evidence** →
+- [x] Re-run the full safety/honesty review **with evidence** →
   `V3-RELEASE-REVIEW.md`.
-- [ ] Regenerate `THIRD_PARTY_NOTICES`; if TradingView Lightweight Charts
+- [x] Regenerate `THIRD_PARTY_NOTICES`; if TradingView Lightweight Charts
   was vendored, confirm the license gate passes it (Apache-2.0 = ALLOW
   under the tiered/transitive/fail-closed policy in `docs/11` §11.11).
-- [ ] Update `README` / `USER-GUIDE` / `COMPONENT-GUIDE`; tag **v3.0**.
-- **Exit gate:** all gates green with evidence; the product launches with
+- [x] Update `README` / `USER-GUIDE` / `COMPONENT-GUIDE`; tag **v3.0**.
+- **Tests:** ✅ `tests/safety/test_v3_surfaces.py` (11 new: the GUI job
+  launcher constructs no `Order`/`PaperBroker` and stays out of
+  `lqe.execution`/`lqe.autonomy`; its "live" job only ever wires a
+  market-data adapter, never an execution adapter; the blotter's kill
+  button is reachable and its API is read-only; the conversation feed's
+  API is read-only + deterministically replayable and its own JS never
+  posts to a write path) · `tests/honesty/test_ui_honesty.py` (+6: blotter/
+  intel carry their own honesty tags; both show a reason instead of a
+  blank panel when empty; the conversation feed's *default* view — outside
+  the power-user `<details>` disclosure — leaks no cryptic internal IDs or
+  raw JSON, verified against a real autopilot campaign) · full suite: 420
+  passed, 6 skipped (all environment-conditional heavy-lib
+  quarantine-inversion pairs) · ruff + mypy (115 source files) + license
+  gate all green.
+- **Evidence:** `V3-RELEASE-REVIEW.md` re-runs the full §19.1 safety/
+  honesty review scoped to M18–M21: no new `Order`/broker-construction
+  seam anywhere in the launcher/blotter/conversation code; the onboarding
+  gate never bypasses the safety core, only swaps which template renders;
+  `/api/blotter` and `/api/conversation` are read-only and replay
+  deterministically; the vendored TradingView Lightweight Charts (Apache-
+  2.0) is out of `license_gate.py`'s pip-based scan by construction but is
+  hand-documented (license, SHA-256, why) in `ui/theme/vendor/README.md`,
+  same precedent as `viz3d/vendor/` — done correctly at M19, reconfirmed
+  here. `THIRD_PARTY_NOTICES.md` regenerated (one incidental diff: numpy
+  2.2.6→2.4.6, still `ALLOW`-tier). `README.md`/`USER-GUIDE.md`/
+  `COMPONENT-GUIDE.md` updated for real: the Blotter view and Engine Room
+  conversation feed are documented in the views table, the GUI job
+  launcher and onboarding gate in the CLI/file-map sections, and a new
+  COMPONENT-GUIDE §12 covers all four milestones at the same depth as
+  §11's v2.0 write-up.
+- **Exit gate:** ✅ all gates green with evidence; the product launches with
   one click, shows trades you can watch, looks institutional, and lets you
   witness the engine-room conversation — with every non-negotiable intact.
   `git tag v3.0`.

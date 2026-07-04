@@ -1,4 +1,4 @@
-# User Guide — `lightweight-quant-engine` v2.0
+# User Guide — `lightweight-quant-engine` v3.0
 
 A local, **paper-only** autonomous quant-research simulator. It runs on your
 machine, serves a browser UI on `localhost`, costs ~$0/month, and **cannot
@@ -154,12 +154,34 @@ Or the equivalent CLI form: `lqe desk --audit runs/audit.jsonl`.
 
 **Both bind `127.0.0.1` only.** There is no authentication because the app is
 never reachable off the loopback interface. Views: Floor, Catalog, Research,
-Intel (decision cards + take-the-wheel), Engine (3D neural-web), Risk, Daily.
+Intel (decision cards + take-the-wheel + the "Engine Room" conversation feed,
+below), Engine (3D neural-web), Risk, Daily, **Blotter** (F8, v3.0).
 
-The **KILL** button (Risk view) flips a disk-persisted, human-owned kill switch
-that the risk gate reads; it blocks every risk-increasing order, survives a
-restart, never auto-clears, and can only be cleared by a **named operator**. The
-LLM/autonomy can never place an order or clear the kill switch.
+**First run (v3.0):** if there's no data yet, the desk shows a plain-language
+onboarding screen while a background job prepares things — never a blank page
+or a stack trace. From there you can trigger **ingest / backtest / live**
+straight from the desk (buttons, not a terminal) — the GUI calls the exact
+same functions the CLI does, just from a background thread; it opens no new
+order-construction path. `Ctrl`/`Cmd`+`K` opens a command palette to jump to
+any view or action by name.
+
+**Blotter (F8, v3.0):** the full trade lifecycle — intent → risk decision
+(APPROVE/CLAMP/REJECT, with the rule that fired) → fill or reject — one row
+per fill, with per-model position/P&L reconciliation below it. Nothing
+vanishes silently: a rejected or clamped intent still gets a row.
+
+**Engine Room (on the Intel view, v3.0):** a turn-by-turn readable dialogue —
+Strategist proposes, Optimizer searches (one card per hypothesis summarizing
+the best trial, not one message per trial), Judge validates (colored by PASS/
+FAIL, with a `Details` disclosure for the raw evidence), Autopilot narrates,
+Risk kills/de-risks. A timeline scrubber replays the exact conversation as it
+stood at any past point in the session, deterministically.
+
+The **KILL** button (status rail, every view) flips a disk-persisted,
+human-owned kill switch that the risk gate reads; it blocks every
+risk-increasing order, survives a restart, never auto-clears, and can only be
+cleared by a **named operator**. The LLM/autonomy can never place an order or
+clear the kill switch.
 
 ## 7. Backups
 
@@ -178,7 +200,8 @@ mypy src                              # types (strict)
 python scripts/license_gate.py        # runtime-dependency license gate
 ```
 The release safety/honesty review with evidence is in `M12-RELEASE-REVIEW.md`
-(v1.0) and `V2-RELEASE-REVIEW.md` (v2.0, M13–M17).
+(v1.0), `V2-RELEASE-REVIEW.md` (v2.0, M13–M17), and `V3-RELEASE-REVIEW.md`
+(v3.0, M18–M21).
 
 ## 9. What it will never do
 No real orders, no broker SDK, no credentials. It refuses a `mode: live` config

@@ -39,6 +39,7 @@ from lqe.portfolio.accounting import Accounting
 from lqe.portfolio.sizing import FixedFractionalSizer
 from lqe.risk.de_risk import DeRiskController
 from lqe.risk.model import RiskModel
+from lqe.risk.portfolio_context import PortfolioContext
 from lqe.risk.reconciliation import FillRecord, reconcile
 from lqe.risk.rules import PortfolioState
 
@@ -56,6 +57,17 @@ class Session:
         risk_model: RiskModel,
         de_risk: DeRiskController | None = None,
         symbol: Symbol,
+        # V5 M27 (Universe Core): shared, mutable cross-book totals a
+        # multi-instrument orchestrator refreshes once per bar-cycle (see
+        # `backtest/universe_runner.py`); `None` in the ordinary single-
+        # symbol case, which leaves `PortfolioState.portfolio_equity`/etc.
+        # `None` too, so `check_portfolio_gross_exposure`/
+        # `check_sleeve_concentration` stay no-ops and nothing about
+        # single-book risk behavior changes. `sleeve` is this session's own
+        # strategy's return-driver sleeve, used only to look up its slice
+        # of `portfolio_context`'s cross-book sleeve concentration.
+        portfolio_context: PortfolioContext | None = None,
+        sleeve: str | None = None,
     ) -> None:
         assert_paper_only(broker.is_paper)
         self.engine = engine
@@ -67,6 +79,8 @@ class Session:
         self._sizer = sizer
         self._fill_simulator = fill_simulator
         self._symbol = symbol
+        self.portfolio_context = portfolio_context
+        self._sleeve = sleeve
         # Analytics telemetry (docs/10 M4): one equity mark per bar, one
         # trade_pnl per realized (SELL) fill, one notional per fill.
         self.equity_curve: list[Decimal] = [accounting.cash]
@@ -95,29 +109,35 @@ class Session:
         # symbols' bars to rank its own universe) -- every bar updates the
         # shared universe snapshot, but the risk/accounting/order pipeline
         # below stays scoped to exactly this session's own `self._symbol`,
-        # unchanged from the single-symbol case (see `_observe_foreign_bar`).
+        # unchanged from the single-symbol case (see `_on_bar`).
         for bar in bars:
             self.engine.tick()
-            self._universe_closes[bar.symbol] = bar.c
-            if bar.symbol != self._symbol:
-                self._observe_foreign_bar(bar)
-                continue
-            self._resolve_working_orders(bar)
-            self._update_day_anchor(bar)
-            self._reconcile()
-            self._emit_risk_state(bar)
-            self._process_bar(bar)
+            self.engine.emit("MarketEvent", bar)
+            self._on_bar(bar)
 
-    def _observe_foreign_bar(self, bar: MarketEvent) -> None:
-        # The strategy may update its own internal ranking/universe state
-        # from another symbol's bar, but can only ever act (place an order)
-        # on its own symbol's bar -- discarding any signal here preserves
-        # the no-look-ahead guarantee and keeps the risk/accounting
-        # pipeline scoped to exactly one book, same as the single-symbol
-        # case. The bar is still emitted to the audit log, so nothing is
-        # silently lost from the record.
-        self.engine.emit("MarketEvent", bar)
-        self._strategy.on_market(bar, self._context())
+    def _on_bar(self, bar: MarketEvent) -> None:
+        # V5 M27 (Universe Core): split out of `run()` so a multi-instrument
+        # orchestrator sharing one `Engine`/tick across several `Session`s
+        # (one per instrument) can tick+emit a bar exactly ONCE and then
+        # call this on every session -- each session independently decides
+        # own-symbol (full pipeline) vs. foreign (observe-only), same
+        # dispatch `run()` uses for its single-session callers. Never call
+        # this directly unless `bar` has already been ticked and emitted.
+        self._universe_closes[bar.symbol] = bar.c
+        if bar.symbol != self._symbol:
+            # The strategy may update its own internal ranking/universe
+            # state from another symbol's bar, but can only ever act (place
+            # an order) on its own symbol's bar -- discarding any signal
+            # here preserves the no-look-ahead guarantee and keeps the
+            # risk/accounting pipeline scoped to exactly one book, same as
+            # the single-symbol case.
+            self._strategy.on_market(bar, self._context())
+            return
+        self._resolve_working_orders(bar)
+        self._update_day_anchor(bar)
+        self._reconcile()
+        self._emit_risk_state(bar)
+        self._process_bar(bar)
 
     def _update_day_anchor(self, bar: MarketEvent) -> None:
         bar_date = bar.ts_open.date()
@@ -152,6 +172,19 @@ class Session:
             recent_intent_keys=frozenset(self._intent_keys),
             strategy_notional_used=position_qty * bar.c,
             open_orders=len(self.broker.working_orders()),
+            portfolio_equity=(
+                self.portfolio_context.equity if self.portfolio_context is not None else None
+            ),
+            portfolio_gross_notional=(
+                self.portfolio_context.gross_notional
+                if self.portfolio_context is not None
+                else None
+            ),
+            sleeve_notional_used=(
+                self.portfolio_context.sleeve_notional(self._sleeve)
+                if self.portfolio_context is not None
+                else None
+            ),
         )
 
     def _emit_risk_state(self, bar: MarketEvent) -> None:
@@ -177,7 +210,9 @@ class Session:
             self._strategy.on_fill(fill, self._context())
 
     def _process_bar(self, bar: MarketEvent) -> None:
-        self.engine.emit("MarketEvent", bar)
+        # `bar` has already been ticked+emitted by `run()` (single-session)
+        # or by a multi-instrument orchestrator sharing this session's
+        # `Engine` -- see `_on_bar`.
         signals: list[SignalEvent] = self._strategy.on_market(bar, self._context())
 
         for signal in signals:

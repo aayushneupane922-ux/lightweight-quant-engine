@@ -149,13 +149,16 @@ class BlotterRow(BaseModel):
 
 
 class ReconciliationRow(BaseModel):
-    """Per-model position/P&L, tied out to the audit log (docs/13 M20
-    "standard blotter practice"). `net_qty`/`realized_pnl` come from the
-    same FIFO lot accounting `model_cells()` uses -- not a second,
-    divergent computation."""
+    """Per-(model, symbol) position/P&L, tied out to the audit log
+    (docs/13 M20 "standard blotter practice"). `net_qty`/`realized_pnl`
+    come from the same FIFO lot accounting the reconstruction's fill
+    handling uses -- not a second, divergent computation. `symbol` (V5
+    M27) keeps a model that genuinely trades more than one instrument from
+    having its positions silently conflated into one row."""
 
     model_config = _FROZEN
     model_id: str
+    symbol: Symbol
     net_qty: Decimal
     realized_pnl: Decimal
     n_trades: int
@@ -894,6 +897,16 @@ class _Reconstruction:
         self._fill_pnl: dict[int, Decimal] = {}
         self._fill_envs: list[EventEnvelope] = []
         self._strategies: dict[str, _StrategyAgg] = defaultdict(_StrategyAgg)
+        # V5 M27 (Universe Core): a SEPARATE (model_id, symbol)-keyed
+        # aggregation, used only by `reconciliation()`. `self._strategies`
+        # above stays keyed by plain model_id (unchanged) for the Floor's
+        # `model_cells()` -- reshaping that view into "models x instruments"
+        # is M28's job, not this one's. Without this second aggregation, a
+        # model_id that genuinely trades more than one symbol would have
+        # its positions silently conflated into one FIFO lot list.
+        self._strategies_by_symbol: dict[tuple[str, Symbol], _StrategyAgg] = defaultdict(
+            _StrategyAgg
+        )
         self._last_risk_state: dict[str, object] | None = None
         self._starting_equity: Decimal | None = None
         self._symbols: dict[Symbol, tuple[datetime | None, int]] = {}
@@ -932,6 +945,9 @@ class _Reconstruction:
         clone._fill_envs = list(self._fill_envs)
         clone._strategies = defaultdict(
             _StrategyAgg, {k: v.clone() for k, v in self._strategies.items()}
+        )
+        clone._strategies_by_symbol = defaultdict(
+            _StrategyAgg, {k: v.clone() for k, v in self._strategies_by_symbol.items()}
         )
         clone._last_risk_state = (
             dict(self._last_risk_state) if self._last_risk_state is not None else None
@@ -1003,6 +1019,22 @@ class _Reconstruction:
         sample = _sim_return_pct(agg, self._starting_equity)
         if sample is not None:
             agg.record_sample(sample)
+
+        # V5 M27: the SAME fill, aggregated separately keyed by
+        # (model_id, symbol) for `reconciliation()` -- a model_id trading
+        # more than one symbol must never have its positions conflated
+        # into one FIFO lot list (see `self._strategies_by_symbol`'s own
+        # comment in `__init__`). The symbol comes from the existing
+        # order -> intent audit chain, not a new event field.
+        intent_ref = self._order_to_intent.get(order_id)
+        intent = self._intent_meta.get(intent_ref) if intent_ref else None
+        symbol = intent.get("symbol") if intent else None
+        if symbol is not None:
+            by_symbol = self._strategies_by_symbol[(strategy, symbol)]
+            if side == "BUY":
+                by_symbol.on_buy(qty, px, fee)
+            else:
+                by_symbol.on_sell(qty, px, fee)
 
     def _on_RiskStateEvent(self, env: EventEnvelope) -> None:
         p = env.payload
@@ -1119,15 +1151,18 @@ class _Reconstruction:
         return rows
 
     def reconciliation(self) -> list[ReconciliationRow]:
-        """Per-model position + realized P&L, tied out to the same FIFO
-        lot accounting `model_cells()` reads from -- one source of truth,
-        not a second computation that could silently diverge."""
+        """Per-(model, symbol) position + realized P&L (V5 M27: keyed by
+        symbol too, not just model_id -- a model genuinely trading more
+        than one instrument gets one row per instrument, never a silently
+        conflated combined position). Tied out to the same FIFO lot
+        accounting `_on_FillEvent` feeds -- one source of truth, not a
+        second computation that could silently diverge."""
         return [
             ReconciliationRow(
-                model_id=model_id, net_qty=agg.net_qty, realized_pnl=agg.realized,
-                n_trades=agg.n_trades,
+                model_id=model_id, symbol=symbol, net_qty=agg.net_qty,
+                realized_pnl=agg.realized, n_trades=agg.n_trades,
             )
-            for model_id, agg in sorted(self._strategies.items())
+            for (model_id, symbol), agg in sorted(self._strategies_by_symbol.items())
         ]
 
 

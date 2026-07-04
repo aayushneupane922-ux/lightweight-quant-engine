@@ -239,7 +239,28 @@ def _ma_cross_factory(
     return lambda: trend_ma_cross.TrendMaCross(symbol=symbol, fast=fast, slow=slow)
 
 
-def _synthetic_universe(symbol: Symbol) -> dict[str, list[float]]:
+# V5 M27 (Universe Core): the real 5-symbol universe -- BTC/ETH/SOL/BNB/XRP,
+# the 5 spot majors docs/15 names. `build_scaled_catalog`'s cross-sectional/
+# stat-arb/Johansen entries use this (or a caller-supplied override) as their
+# genuine ranking/basket symbol list; the fake numeric price paths below
+# (`_synthetic_allocator_closes`) are unrelated and stay scoped to the static
+# weight allocators only -- see that function's own docstring.
+DEFAULT_UNIVERSE: tuple[Symbol, ...] = (
+    "BTC-USDT", "ETH-USDT", "SOL-USDT", "BNB-USDT", "XRP-USDT",
+)
+
+
+def _synthetic_allocator_closes(symbol: Symbol) -> dict[str, list[float]]:
+    # ONLY for the static-weight portfolio allocators (StaticWeightProjection/
+    # PyPortfolioOpt/skfolio/riskfolio) -- they compute a fixed weight once at
+    # construction time from *some* representative closes, never adapt to a
+    # live per-bar feed, so a real interleaved universe stream wouldn't
+    # change their behavior. NOT the source for cross-sectional/stat-arb
+    # models' ranking universe -- those use `DEFAULT_UNIVERSE` (or a caller
+    # override) directly, since they need real per-bar sibling-symbol bars,
+    # not a one-shot numeric fixture (V5 M27; previously both concerns
+    # shared this same fake data under the name `_synthetic_universe`).
+    #
     # 3 assets, not 2: skfolio's HierarchicalRiskParity computes an "optimal
     # number of clusters" via a gap statistic that needs >=3 assets to have
     # any candidate cluster count to search over; with exactly 2 it raises
@@ -294,7 +315,7 @@ def _min_variance_weights(universe: Mapping[str, Sequence[float]]) -> Mapping[st
 
 
 def _native_allocator_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
-    universe = _synthetic_universe(symbol)
+    universe = _synthetic_allocator_closes(symbol)
     specs: list[tuple[str, str, WeightFn]] = [
         ("alloc_inverse_vol", "Inverse-volatility weight.", _inverse_vol_weights),
         (
@@ -339,8 +360,16 @@ def _cross_sectional_manifest(
     )
 
 
-def _cross_sectional_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
-    universe = tuple(_synthetic_universe(symbol).keys())
+def _cross_sectional_entries(
+    symbol: Symbol, universe: Sequence[Symbol] = DEFAULT_UNIVERSE
+) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    # V5 M27: `universe` is the real symbol set these models rank against
+    # (previously derived from `_synthetic_universe`'s fake price-data keys
+    # -- the symbol *names* were all that was ever used here, never the
+    # numbers). `CrossSectionalAdapter` requires its own `symbol` to be a
+    # member of `universe`.
+    if symbol not in universe:
+        universe = (symbol, *universe)
     # (id, family, one_liner, lookback, top_quantile, metric)
     specs: list[tuple[str, Family, str, int, float, Metric]] = [
         (
@@ -398,8 +427,10 @@ def _stat_arb_manifest(model_id: str, one_liner: str, n: int) -> ModelManifest:
     )
 
 
-def _stat_arb_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
-    universe = _synthetic_universe(symbol)
+def _stat_arb_entries(
+    symbol: Symbol, universe: Sequence[Symbol] = DEFAULT_UNIVERSE
+) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    # V5 M27: real sibling symbols, not `_synthetic_universe`'s fake keys.
     others = [sym for sym in universe if sym != symbol]
     partner, leader = others[0], others[1]
     basket = tuple(others)
@@ -463,8 +494,9 @@ def _synthetic_funding_history(
     amplitude: float = 0.00015, noise_std: float = 0.00035,
 ) -> list[tuple[datetime, float]]:
     # docs/14 sleeve F (v4): a fixed side-channel funding-rate series, same
-    # "known series, looked up per bar" pattern as `_synthetic_universe`
-    # above and `pairs_ols`'s `hedge_closes`. Anchored well before this
+    # "known series, looked up per bar" pattern as
+    # `_synthetic_allocator_closes` above and `pairs_ols`'s `hedge_closes`.
+    # Anchored well before this
     # project's own demo/test bar timestamps (2026-01-01, docs/10
     # `make_demo_run.py`) and extended ~2 years past them (8h funding
     # cadence) so any realistic backtest/live bar timestamp finds a real,
@@ -595,9 +627,15 @@ def _carry_basis_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[
     return entries
 
 
-def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
-    universe = _synthetic_universe(symbol)
+def _heavy_entries(
+    symbol: Symbol, universe: Sequence[Symbol] = DEFAULT_UNIVERSE
+) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    allocator_closes = _synthetic_allocator_closes(symbol)
     hedge = [10.0, 10.5, 10.2, 10.8]
+    # V5 M27: the Johansen basket's sibling symbols come from the real
+    # universe now, not `_synthetic_universe`'s fake keys; the cvxpy/skfolio/
+    # riskfolio allocators below still use `allocator_closes` (fake, static,
+    # unrelated to live universe data -- see `_synthetic_allocator_closes`).
     johansen_basket = tuple(sym for sym in universe if sym != symbol)
 
     def factory(cls: Any, **kw: Any) -> Callable[[], Strategy]:
@@ -618,13 +656,13 @@ def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Str
          "ruptures", factory(ChangePointAdapter, name="regime_changepoint")),
         ("portfolio_mvo", "portfolio", "allocator", "Max-Sharpe mean-variance weight.",
          "PyPortfolioOpt",
-         factory(PyPortfolioOptAdapter, name="portfolio_mvo", universe_closes=universe)),
+         factory(PyPortfolioOptAdapter, name="portfolio_mvo", universe_closes=allocator_closes)),
         ("portfolio_hrp", "portfolio", "allocator", "Hierarchical risk parity weight.",
          "skfolio",
-         factory(SkfolioOptimizerAdapter, name="portfolio_hrp", universe_closes=universe)),
+         factory(SkfolioOptimizerAdapter, name="portfolio_hrp", universe_closes=allocator_closes)),
         ("riskalloc_rp", "risk_allocation", "allocator", "Risk-parity allocation.",
          "riskfolio-lib",
-         factory(RiskfolioAdapter, name="riskalloc_rp", universe_closes=universe)),
+         factory(RiskfolioAdapter, name="riskalloc_rp", universe_closes=allocator_closes)),
         ("supervised_logit", "supervised", "ml_signal", "Logistic next-bar direction (gated).",
          "scikit-learn",
          factory(SupervisedSignalAdapter, name="supervised_logit", kind="logistic")),
@@ -638,18 +676,30 @@ def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Str
     ]
 
 
-def build_scaled_catalog(symbol: Symbol) -> tuple[ModelCatalog, list[IntakeResult]]:
+def build_scaled_catalog(
+    symbol: Symbol, *, universe: Sequence[Symbol] = DEFAULT_UNIVERSE
+) -> tuple[ModelCatalog, list[IntakeResult]]:
     """Register the full scaled catalog for `symbol`. Native models admit;
     heavy-lib models admit only if the `models` extra is installed, else
     quarantine transparently. Returns the catalog + the intake result for
-    each so callers can see exactly why any model was held back."""
+    each so callers can see exactly why any model was held back.
+
+    `universe` (V5 M27) is the real symbol set the cross-sectional/stat-arb/
+    Johansen models rank or basket against -- defaults to the 5 spot majors
+    (`DEFAULT_UNIVERSE`). `symbol` is included automatically if not already
+    a member, since every model here still trades exactly one instrument
+    (its own `symbol`) -- see docs/15 M27's "one book per instrument"
+    design decision.
+    """
+    if symbol not in universe:
+        universe = (symbol, *universe)
     catalog = ModelCatalog()
     results = [
         catalog.register(manifest, factory)
         for manifest, factory in (
             *_native_entries(symbol), *_native_allocator_entries(symbol),
-            *_cross_sectional_entries(symbol), *_stat_arb_entries(symbol),
-            *_carry_basis_entries(symbol), *_heavy_entries(symbol),
+            *_cross_sectional_entries(symbol, universe), *_stat_arb_entries(symbol, universe),
+            *_carry_basis_entries(symbol), *_heavy_entries(symbol, universe),
         )
     ]
     return catalog, results

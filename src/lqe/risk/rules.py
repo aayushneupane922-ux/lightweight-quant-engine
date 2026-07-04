@@ -29,6 +29,11 @@ class RiskConfig:
     max_price_deviation: Decimal = Decimal("0.2")
     per_strategy_budget: Decimal = Decimal("1.0")
     max_dd: Decimal = Decimal("1.0")
+    # V5 M27 (Universe Core): fraction of *portfolio-wide* equity a single
+    # sleeve may have deployed across every instrument's book at once.
+    # Permissive default (100%) so a single-sleeve/single-symbol book's
+    # behavior is unchanged unless a caller deliberately tightens it.
+    max_sleeve_gross: Decimal = Decimal("1.0")
 
 
 @dataclass(frozen=True)
@@ -47,6 +52,16 @@ class PortfolioState:
     strategy_notional_used: Decimal = Decimal("0")
     open_orders: int = 0
     kill_active: bool = False
+    # V5 M27: cross-instrument aggregate figures, populated only when a
+    # multi-instrument orchestrator shares a `risk.portfolio_context.
+    # PortfolioContext` across several single-symbol `Session`s (see
+    # `backtest/universe_runner.py`). `None` in the ordinary single-book
+    # case -- `check_portfolio_gross_exposure`/`check_sleeve_concentration`
+    # are then no-ops, so nothing about the existing single-symbol/single-
+    # book risk behavior changes.
+    portfolio_equity: Decimal | None = None
+    portfolio_gross_notional: Decimal | None = None
+    sleeve_notional_used: Decimal | None = None
 
     @property
     def gross_exposure(self) -> Decimal:
@@ -215,6 +230,69 @@ def check_per_strategy_budget(
     )
 
 
+def check_portfolio_gross_exposure(
+    intent: OrderIntent, state: _State, config: _Config
+) -> RuleHit | None:
+    """V5 M27: the cross-instrument counterpart to `check_max_gross_exposure`
+    -- caps total notional across every book in the universe against total
+    portfolio equity, not just this one book's own position/equity. A
+    no-op (returns `None`) unless a multi-instrument orchestrator has
+    populated `state.portfolio_equity`/`state.portfolio_gross_notional`
+    (both `None` in the single-book case)."""
+    if (
+        intent.side != "BUY"
+        or state.portfolio_equity is None
+        or state.portfolio_gross_notional is None
+        or state.portfolio_equity <= 0
+        or state.reference_price <= 0
+    ):
+        return None
+    projected_notional = state.portfolio_gross_notional + intent.qty * state.reference_price
+    max_notional = config.max_gross_exposure * state.portfolio_equity
+    if projected_notional <= max_notional:
+        return None
+    allowed_notional = max_notional - state.portfolio_gross_notional
+    if allowed_notional <= 0:
+        return RuleHit(
+            rule="portfolio_gross_exposure", verdict="REJECT",
+            detail="at/over portfolio-wide max exposure",
+        )
+    return RuleHit(
+        rule="portfolio_gross_exposure", verdict="CLAMP",
+        clamp_qty=allowed_notional / state.reference_price, detail="clamped",
+    )
+
+
+def check_sleeve_concentration(
+    intent: OrderIntent, state: _State, config: _Config
+) -> RuleHit | None:
+    """V5 M27: caps how much of total portfolio equity a single return-
+    driver sleeve (e.g. `trend_momentum`) may have deployed across every
+    instrument's book at once -- a no-op unless a multi-instrument
+    orchestrator has populated `state.sleeve_notional_used`/
+    `state.portfolio_equity` (both `None` in the single-book case, same
+    backward-compat pattern as `check_portfolio_gross_exposure`)."""
+    if (
+        intent.side != "BUY"
+        or state.sleeve_notional_used is None
+        or state.portfolio_equity is None
+        or state.portfolio_equity <= 0
+        or state.reference_price <= 0
+    ):
+        return None
+    projected = state.sleeve_notional_used + intent.qty * state.reference_price
+    max_notional = config.max_sleeve_gross * state.portfolio_equity
+    if projected <= max_notional:
+        return None
+    allowed_notional = max_notional - state.sleeve_notional_used
+    if allowed_notional <= 0:
+        return RuleHit(rule="sleeve_concentration", verdict="REJECT", detail="sleeve cap exhausted")
+    return RuleHit(
+        rule="sleeve_concentration", verdict="CLAMP",
+        clamp_qty=allowed_notional / state.reference_price, detail="clamped",
+    )
+
+
 # Order matters only for which REJECT reason is reported first on a hard
 # breach; every rule still runs against APPROVE/CLAMP accumulation.
 ALL_RULES = (
@@ -230,4 +308,6 @@ ALL_RULES = (
     check_max_gross_exposure,
     check_cash_sufficiency,
     check_per_strategy_budget,
+    check_portfolio_gross_exposure,
+    check_sleeve_concentration,
 )

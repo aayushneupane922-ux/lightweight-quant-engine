@@ -57,15 +57,15 @@ All in `src/lqe/ui/theme/desk.css` unless noted. These are the audit's concrete 
 - **Tests:** AA contrast on new sizes; reduced-motion still kills all animation; focus rings intact; no emoji-as-icon; no CLI/stdout; honesty labels present; UI constructs no `Order`.
 - **Gate:** the desk looks and *feels* polished on the current single-instrument build. `tag m26-done`.
 
-### M27 · Universe Core (multi-instrument)  · L · Opus · Dep: M26
+### M27 · Universe Core (multi-instrument)  · L · Opus · Dep: M26 — DONE, tag `m27-done`
 *Approach A from the blueprint: one deterministic loop, a fan-out `Universe`.*
-- [ ] `Universe` object: synchronized multi-symbol bar stream (5 spot majors: BTC, ETH, SOL, BNB, XRP); deterministic bar-alignment (late/missing symbol ⇒ no-trade+logged).
-- [ ] Models declare consumed instruments; single-instrument models run per-symbol; the loop passes cross-sectional models the whole universe slice.
-- [ ] **Unified cross-instrument risk** (per-instrument limits + portfolio gross/concentration/per-sleeve budgets) + **one reconciliation** tying every instrument to the single audit.
-- [ ] **Gate trial-count spans models × instruments** (the honest-N grows → promotion bar rises).
-- [ ] UI: status rail shows the universe + per-symbol feed health.
-- **Tests:** multi-symbol replay deterministic; bar-misalignment handled; portfolio risk caps hold across instruments; reconciliation ties to audit; gate N includes instruments.
-- **Gate:** 5 spot symbols run as one deterministic, reconciled, gated book. `tag m27-done`.
+- [x] `Universe` object: synchronized multi-symbol bar stream (5 spot majors: BTC, ETH, SOL, BNB, XRP); deterministic bar-alignment (late/missing symbol ⇒ no-trade+logged). `core/universe.py`.
+- [x] Models declare consumed instruments; single-instrument models run per-symbol; the loop passes cross-sectional models the whole universe slice. `backtest/universe_runner.py::run_universe_backtest` (one `Session` per instrument, sharing one `Engine`); `catalog_scale.py`'s `DEFAULT_UNIVERSE` replaces the fake synthetic universe those adapters were permanently inert against.
+- [x] **Unified cross-instrument risk** (per-instrument limits + portfolio gross/concentration/per-sleeve budgets) + **one reconciliation** tying every instrument to the single audit. `risk/portfolio_context.py` + 2 new rules (`check_portfolio_gross_exposure`, `check_sleeve_concentration`) in `risk/rules.py`; `StateReader.reconciliation()` now keyed by `(model, symbol)`.
+- [x] **Gate trial-count spans models × instruments** (the honest-N grows → promotion bar rises). No gate code change needed — `ExperimentRegistry.trial_count()` was already a blind `count(*)` (same finding as M23's own audit); it grows automatically once the catalog has (model, symbol) pairs to search.
+- [x] UI: status rail shows the universe + per-symbol feed health. `base.html`'s hardcoded `data_health[0]` → loops the full list (the data's been list-shaped since before M27).
+- **Tests:** multi-symbol replay deterministic; bar-misalignment handled; portfolio risk caps hold across instruments; reconciliation ties to audit; gate N includes instruments. All shipped — see `HANDOFF.md` §1j.
+- **Gate:** 5 spot symbols run as one deterministic, reconciled, gated book — proven via `run_universe_backtest` (backtest side). **Honestly disclosed, not hidden**: the LIVE loop (`live/session.py`/`live/multi_model_runner.py`) was NOT rewired to N symbols this session — `live/multi_symbol_feed.py::MultiSymbolLiveFeed` (the data layer) shipped, but `LiveSession`/`LiveMultiModelRunner`'s own generalization to "N sessions + cross-book aggregator" is flagged as the concrete M27 follow-up, same disclosure discipline as M24's carry-basis shortfall. `tag m27-done`.
 
 ### M28 · Wake the Sleeves  · M · Dep: M27
 - [ ] Turn on cross-sectional momentum/reversal/low-vol ranking, BTC→alt lead-lag, cointegration pairs (ETH/BTC, SOL/ETH…), universe-regime — the v4 adapters that were mute. Each passes intake + the universe-scaled gate.

@@ -14,7 +14,9 @@
     <span class="brand">OBSIDIAN <b>DESK</b></span>
     <span class="seg"><span class="dot{% if kill_active %} off{% endif %}" id="feed-dot"></span><b>PAPER</b> · simulated</span>
     {% if snapshot.data_health %}
-    <span class="seg">feed <b>{{ snapshot.data_health[0].symbol }}</b> · {{ snapshot.data_health[0].bars_seen }} bars</span>
+    <span class="seg">feed
+      {%- for h in snapshot.data_health %} <b>{{ h.symbol }}</b> · {{ h.bars_seen }} bars{% if not loop.last %} ·{% endif %}{% endfor -%}
+    </span>
     {% endif %}
     <span class="spacer"></span>
     <span class="stat"><span class="k">Session P/L (sim)</span>

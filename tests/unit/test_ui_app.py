@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from lqe.core.engine import AuditLog
-from lqe.core.events import ControlEvent
+from lqe.core.events import ControlEvent, MarketEvent
 from lqe.live.control import ControlPlane
 from lqe.storage.state_reader import CatalogModelInfo, StateReader
 from lqe.ui.app import create_app
@@ -27,6 +27,28 @@ def _client() -> TestClient:
 @pytest.mark.parametrize("page", ["/", "/catalog", "/research", "/risk", "/daily"])
 def test_all_views_render(page: str) -> None:
     assert _client().get(page).status_code == 200
+
+
+def test_status_rail_shows_every_symbols_feed_health_not_just_the_first() -> None:
+    # V5 M27: `data_health` has been list-shaped since before this
+    # milestone; the status rail template used to hardcode `[0]`.
+    from decimal import Decimal
+
+    log = AuditLog()
+    for i, (symbol, price) in enumerate([("BTC-USDT", "100"), ("ETH-USDT", "10")]):
+        log.append(
+            event_type="MarketEvent", run_id="r", seq=i + 1, book="sandbox",
+            sim_ts=datetime(2026, 1, 1, tzinfo=UTC),
+            payload=MarketEvent(
+                exchange="binance", symbol=symbol, timeframe="1m",
+                ts_open=datetime(2026, 1, 1, tzinfo=UTC),
+                o=Decimal(price), h=Decimal(price), l=Decimal(price), c=Decimal(price),
+                v=1.0, source_version="test",
+            ),
+        )
+    data = DeskData(state_reader=StateReader(log.records), control=ControlPlane())
+    html = TestClient(create_app(data)).get("/").text
+    assert "BTC-USDT" in html and "ETH-USDT" in html
 
 
 def test_catalog_view_and_floor_snapshot_both_show_the_sleeve_not_just_family() -> None:

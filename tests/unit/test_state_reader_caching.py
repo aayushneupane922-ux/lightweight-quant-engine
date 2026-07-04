@@ -176,3 +176,86 @@ def test_downsampling_still_applies_per_call_on_the_cached_series() -> None:
     assert len(full) == 50
     assert len(small) <= 10
     assert small[0] == full[0] and small[-1] == full[-1]
+
+
+# --- StateReader.extended (perf phase 2b) -----------------------------------
+# The live loop extends the previous poll's reader with just the new
+# records instead of replaying the whole log. Contract: a chain of
+# .extended() calls is observationally identical to one big fresh reader,
+# and extending never mutates the old reader.
+
+
+def _assert_readers_equal(a: StateReader, b: StateReader) -> None:
+    assert a.snapshot() == b.snapshot()
+    assert a.blotter() == b.blotter()
+    assert a.blotter(after_seq=10, limit=5) == b.blotter(after_seq=10, limit=5)
+    assert a.reconciliation() == b.reconciliation()
+    assert a.tape(limit=1000) == b.tape(limit=1000)
+    assert a.price_series("BTC-USDT") == b.price_series("BTC-USDT")
+    assert a.equity_curve() == b.equity_curve()
+    assert a.graph() == b.graph()
+
+
+@pytest.mark.parametrize("batch_sizes", [[1] * 6, [2, 3, 1], [5, 1], [3, 3]])
+def test_chained_extended_equals_one_big_reader(batch_sizes: list[int]) -> None:
+    engine = _engine_with_session(n_bars=sum(batch_sizes) + 2)
+    records = engine.audit.records
+    catalog = [CatalogModelInfo(model_id="trend_ma_cross", family="trend", sleeve="trend_momentum")]
+
+    per_bar = 7  # events emitted per bar by _engine_with_session
+    cut = 2 * per_bar
+    reader = StateReader(records[:cut], catalog=catalog)
+    reader.snapshot()  # materialize the reconstruction so extended() carries it
+    reader.price_series("BTC-USDT")
+    reader.equity_curve()
+    for size in batch_sizes:
+        reader = reader.extended(records[cut : cut + size * per_bar])
+        cut += size * per_bar
+
+    fresh = StateReader(records, catalog=catalog)
+    _assert_readers_equal(reader, fresh)
+
+
+def test_extended_without_materialized_caches_still_matches() -> None:
+    engine = _engine_with_session(n_bars=8)
+    records = engine.audit.records
+    catalog = [CatalogModelInfo(model_id="trend_ma_cross", family="trend", sleeve="trend_momentum")]
+    reader = StateReader(records[:28], catalog=catalog)  # nothing read yet
+    extended = reader.extended(records[28:])
+    _assert_readers_equal(extended, StateReader(records, catalog=catalog))
+
+
+def test_extended_does_not_mutate_the_old_reader() -> None:
+    engine = _engine_with_session(n_bars=6)
+    records = engine.audit.records
+    catalog = [CatalogModelInfo(model_id="trend_ma_cross", family="trend", sleeve="trend_momentum")]
+    old = StateReader(records[:21], catalog=catalog)
+    before_snapshot = old.snapshot()
+    before_tape = old.tape(limit=1000)
+    before_price = old.price_series("BTC-USDT")
+
+    extended = old.extended(records[21:])
+    assert extended.snapshot() != before_snapshot  # new state really differs...
+    assert old.snapshot() == before_snapshot  # ...but the old reader is frozen
+    assert old.tape(limit=1000) == before_tape
+    assert old.price_series("BTC-USDT") == before_price
+
+
+def test_extended_model_state_fired_tracks_the_new_max_seq() -> None:
+    # A model whose last fill was the final record reads FIRED; after
+    # extending with newer records it must fall back to LONG -- the exact
+    # regression the fired_on_last_seq -> last_fill_seq refactor guards.
+    engine = _engine_with_session(n_bars=4)
+    records = engine.audit.records
+    catalog = [CatalogModelInfo(model_id="trend_ma_cross", family="trend", sleeve="trend_momentum")]
+
+    fill_seqs = [r.seq for r in records if r.type == "FillEvent"]
+    at_fill = StateReader(records[: fill_seqs[-1]], catalog=catalog)
+    cell = {m.model_id: m for m in at_fill.snapshot().models}["trend_ma_cross"]
+    assert cell.state == "FIRED"
+
+    extended = at_fill.extended(records[fill_seqs[-1] :])
+    fresh = StateReader(records, catalog=catalog)
+    ext_cell = {m.model_id: m for m in extended.snapshot().models}["trend_ma_cross"]
+    fresh_cell = {m.model_id: m for m in fresh.snapshot().models}["trend_ma_cross"]
+    assert ext_cell == fresh_cell

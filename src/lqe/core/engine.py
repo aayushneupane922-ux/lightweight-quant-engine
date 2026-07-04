@@ -91,18 +91,44 @@ class AuditLog:
     def records(self) -> list[EventEnvelope]:
         return list(self._records)
 
+    def record_count(self) -> int:
+        return len(self._records)
+
+    def records_since(self, start: int) -> list[EventEnvelope]:
+        """The records appended at index `start` and later — lets an
+        incremental consumer (the live loop's merged view, append-only
+        persistence) fetch just the new tail instead of copying the whole
+        ever-growing list every poll."""
+        return self._records[start:]
+
     @property
     def head_hash(self) -> str:
         return self._prev_hash
 
     def write_jsonl(self, path: Path) -> None:
-        """Append-only JSONL export (docs/06 §6.5) — the source of truth a
-        restart rebuilds state from."""
+        """One-shot JSONL export (docs/06 §6.5) — truncates and writes the
+        full log; the source of truth a restart rebuilds state from. For
+        per-poll persistence use `append_jsonl`, which writes only the new
+        tail."""
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as fh:
             for envelope in self._records:
                 fh.write(envelope.model_dump_json())
                 fh.write("\n")
+
+    def append_jsonl(self, path: Path, *, start: int) -> int:
+        """Append `records[start:]` to `path` (identical serialization to
+        `write_jsonl`, so appending per poll yields a byte-identical file to
+        one final full rewrite) and return the new persisted count. The
+        in-memory log is append-only within a session, so the caller only
+        needs to track the cursor. A crash mid-append leaves at most one
+        partial trailing line, which `from_jsonl` rejects fail-loud."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            for envelope in self._records[start:]:
+                fh.write(envelope.model_dump_json())
+                fh.write("\n")
+        return len(self._records)
 
     @classmethod
     def from_jsonl(cls, path: Path) -> AuditLog:

@@ -158,6 +158,39 @@ def probe_state_reader(engine: Engine) -> None:
 def probe_merge_and_persist(engine: Engine) -> None:
     merge = _median_ms(lambda: merged_records(engine))
     print(f"merged_records() full:         {merge:10.2f} ms")
+    try:
+        from lqe.live.merge import IncrementalMerge
+    except ImportError:
+        print("IncrementalMerge:               (not implemented yet)")
+    else:
+        inc = IncrementalMerge()
+        inc.extend(engine)  # initial full consume
+        clock = engine.clock
+        start = datetime(2026, 1, 2, tzinfo=UTC)
+
+        def one_poll_tail() -> None:
+            # ~150 new records, the realistic per-poll tail for one 1m bar
+            ts = start + timedelta(minutes=len(engine.audit.records))
+            clock.set(ts)  # type: ignore[attr-defined]
+            bar = MarketEvent(
+                exchange="synthetic", symbol="BTC-USDT", timeframe="1m", ts_open=ts,
+                o=Decimal(100), h=Decimal(101), l=Decimal(99), c=Decimal(100),
+                v=1.0, source_version="perf",
+            )
+            engine.emit("MarketEvent", bar)
+            for m in range(149):
+                engine.emit(
+                    "SignalEvent",
+                    SignalEvent(
+                        strategy=f"model_{m % N_MODELS}", symbol="BTC-USDT",
+                        direction="LONG", strength=1.0, intent_kind="ENTER",
+                        bar_ts=ts, reason="perf",
+                    ),
+                )
+            inc.extend(engine)
+
+        tail = _median_ms(one_poll_tail)
+        print(f"IncrementalMerge 150-rec tail: {tail:10.2f} ms (incl. emitting them)")
     with tempfile.TemporaryDirectory() as td:
         out = Path(td) / "audit.jsonl"
         full = _median_ms(lambda: engine.audit.write_jsonl(out))

@@ -34,7 +34,7 @@ from lqe.core.types import Symbol, Timeframe
 from lqe.data.base import MarketDataAdapter
 from lqe.live.control import ControlPlane
 from lqe.live.live_feed import LiveFeed
-from lqe.live.merge import merged_records
+from lqe.live.merge import IncrementalMerge
 from lqe.live.multi_model_runner import LiveMultiModelRunner, build_fleet
 from lqe.models.catalog import ModelCatalog
 from lqe.models.catalog_scale import build_scaled_catalog
@@ -125,6 +125,13 @@ class LiveSession:
         self.resumed = False
         self._bars_since_step = 0
         self.step_count = 0
+        # Perf phase 2: incremental per-poll work. `_merge` keeps the
+        # persistent merged trade+autonomy view (only new records get merged
+        # each poll); `_last_reader` is extended, not rebuilt; `_persisted`
+        # is the audit-file cursor for append-only writes.
+        self._merge = IncrementalMerge()
+        self._last_reader: StateReader | None = None
+        self._persisted = 0
         # `desk_data`, when given (docs/13 M18: the GUI job runner passes the
         # server's already-running DeskData so the dashboard updates in
         # place), is reused rather than built fresh -- its ControlPlane
@@ -173,7 +180,10 @@ class LiveSession:
             self.runner.process_bar(bar)
             self.bars_so_far.append(bar)
         if out_path is not None:
+            # one full (truncating) write at setup -- this is also the
+            # resume-rewrite path; every later poll appends only the tail
             self.trade_engine.audit.write_jsonl(out_path)
+            self._persisted = self.trade_engine.audit.record_count()
 
         self.orchestrator = Orchestrator(
             validator=Validator(),
@@ -212,9 +222,14 @@ class LiveSession:
         return True
 
     def _rebuild_state_reader(self) -> StateReader:
-        return StateReader(
-            merged_records(self.trade_engine, self.orchestrator.engine), catalog=self._catalog_info
-        )
+        new = self._merge.extend(self.trade_engine, self.orchestrator.engine)
+        if self._last_reader is None or self._merge.last_extend_rebuilt:
+            # first build, or the merge had to renumber its prefix -- a
+            # carried-forward reader would be stale; start fresh.
+            self._last_reader = StateReader(list(self._merge.merged), catalog=self._catalog_info)
+        elif new:
+            self._last_reader = self._last_reader.extended(new)
+        return self._last_reader
 
     def poll_once(self) -> PollResult:
         """One poll cycle. Never raises on a transient feed error -- returns
@@ -258,6 +273,8 @@ class LiveSession:
             )
 
         if self.config.out_path is not None:
-            self.trade_engine.audit.write_jsonl(self.config.out_path)
+            self._persisted = self.trade_engine.audit.append_jsonl(
+                self.config.out_path, start=self._persisted
+            )
         self.desk_data.set_state_reader(self._rebuild_state_reader())
         return summary

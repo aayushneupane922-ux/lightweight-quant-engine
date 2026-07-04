@@ -287,6 +287,36 @@ class StateReader:
             self._recon_cache = _Reconstruction(self._records, self._catalog)
         return self._recon_cache
 
+    def extended(self, new_records: list[EventEnvelope]) -> StateReader:
+        """A NEW reader over this one's records + `new_records`, carrying
+        the already-built reconstruction and chart caches forward so only
+        the tail is walked (perf phase 2b) -- the live loop calls this once
+        per poll instead of paying a full-log replay as sessions grow. This
+        reader is never mutated, so in-flight readers on other threads (the
+        desk's request handlers) stay consistent; the caller swaps the new
+        reader in atomically via `DeskData.set_state_reader`, as before.
+
+        Only valid when `new_records` extend this reader's view append-only
+        (same prefix, strictly later records) -- the live loop's
+        `IncrementalMerge` guarantees that and falls back to a fresh
+        `StateReader` construction whenever it can't."""
+        reader = StateReader(self._records + new_records)
+        reader._catalog = self._catalog  # read-only mapping, safe to share
+        reader._run_id = self._run_id or (new_records[0].run_id if new_records else "")
+        if self._recon_cache is not None:
+            reader._recon_cache = self._recon_cache.extended(new_records, reader._records)
+        for sym, bars in self._price_cache.items():
+            reader._price_cache[sym] = bars + [
+                _price_bar(env)
+                for env in new_records
+                if env.type == "MarketEvent" and str(env.payload["symbol"]) == sym
+            ]
+        if self._equity_cache is not None:
+            reader._equity_cache = self._equity_cache + [
+                _equity_point(env) for env in new_records if env.type == "RiskStateEvent"
+            ]
+        return reader
+
     @classmethod
     def from_jsonl(
         cls, path: Path, *, catalog: list[CatalogModelInfo] | None = None
@@ -358,14 +388,7 @@ class StateReader:
         renders a responsive chart."""
         if symbol not in self._price_cache:
             self._price_cache[symbol] = [
-                PriceBar(
-                    ts=env.sim_ts,
-                    o=Decimal(str(env.payload["o"])),
-                    h=Decimal(str(env.payload["h"])),
-                    l=Decimal(str(env.payload["l"])),
-                    c=Decimal(str(env.payload["c"])),
-                    v=float(env.payload["v"]),
-                )
+                _price_bar(env)
                 for env in self._records
                 if env.type == "MarketEvent" and str(env.payload["symbol"]) == symbol
             ]
@@ -377,9 +400,7 @@ class StateReader:
         most `max_points`."""
         if self._equity_cache is None:
             self._equity_cache = [
-                EquityPoint(ts=env.sim_ts, equity=Decimal(str(env.payload["equity"])))
-                for env in self._records
-                if env.type == "RiskStateEvent"
+                _equity_point(env) for env in self._records if env.type == "RiskStateEvent"
             ]
         return _downsample(self._equity_cache, max_points)
 
@@ -618,7 +639,22 @@ class StateReader:
         )
 
 
-# --- graph helpers --------------------------------------------------------
+# --- chart/graph helpers ----------------------------------------------------
+
+
+def _price_bar(env: EventEnvelope) -> PriceBar:
+    return PriceBar(
+        ts=env.sim_ts,
+        o=Decimal(str(env.payload["o"])),
+        h=Decimal(str(env.payload["h"])),
+        l=Decimal(str(env.payload["l"])),
+        c=Decimal(str(env.payload["c"])),
+        v=float(env.payload["v"]),
+    )
+
+
+def _equity_point(env: EventEnvelope) -> EquityPoint:
+    return EquityPoint(ts=env.sim_ts, equity=Decimal(str(env.payload["equity"])))
 
 
 def _downsample[T](rows: list[T], max_points: int) -> list[T]:
@@ -779,8 +815,19 @@ class _StrategyAgg:
         self.realized = Decimal("0")
         self.last_reason = ""
         self.last_direction = "FLAT"
-        self.fired_on_last_seq = False
+        self.last_fill_seq = -1  # "FIRED" == filled on the newest record; computed at output time
         self._lots: list[tuple[Decimal, Decimal]] = []  # (qty, px) FIFO, long-only round trips
+
+    def clone(self) -> _StrategyAgg:
+        c = _StrategyAgg()
+        c.net_qty = self.net_qty
+        c.n_trades = self.n_trades
+        c.realized = self.realized
+        c.last_reason = self.last_reason
+        c.last_direction = self.last_direction
+        c.last_fill_seq = self.last_fill_seq
+        c._lots = list(self._lots)
+        return c
 
     def on_buy(self, qty: Decimal, px: Decimal, fee: Decimal) -> None:
         self._lots.append((qty, px))
@@ -827,13 +874,51 @@ class _Reconstruction:
         self.kill_active = False
         self.breaches: list[str] = []
 
-        self._walk()
+        self._walk(self._records)
 
-    def _walk(self) -> None:
-        for env in self._records:
+    def _walk(self, records: list[EventEnvelope]) -> None:
+        for env in records:
             handler = getattr(self, f"_on_{env.type}", None)
             if handler is not None:
                 handler(env)
+
+    def extended(
+        self, new_records: list[EventEnvelope], all_records: list[EventEnvelope]
+    ) -> _Reconstruction:
+        """A NEW reconstruction covering `all_records` (= this one's records
+        + `new_records`), built by copying this one's aggregation state and
+        walking only the tail -- O(new + trades) instead of O(total
+        records) per poll (perf phase 2b). This instance is never mutated,
+        so in-flight readers on other threads stay consistent."""
+        clone = object.__new__(_Reconstruction)
+        clone._records = all_records
+        clone._catalog = self._catalog  # read-only mapping, safe to share
+        clone._max_seq = self._max_seq
+        clone._order_to_strategy = dict(self._order_to_strategy)
+        clone._order_to_side = dict(self._order_to_side)
+        clone._order_to_intent = dict(self._order_to_intent)
+        clone._intent_to_strategy = dict(self._intent_to_strategy)
+        clone._intent_meta = dict(self._intent_meta)
+        clone._decision_meta = dict(self._decision_meta)
+        clone._decision_seq = dict(self._decision_seq)
+        clone._decision_ts = dict(self._decision_ts)
+        clone._fill_pnl = dict(self._fill_pnl)
+        clone._fill_envs = list(self._fill_envs)
+        clone._strategies = defaultdict(
+            _StrategyAgg, {k: v.clone() for k, v in self._strategies.items()}
+        )
+        clone._last_risk_state = (
+            dict(self._last_risk_state) if self._last_risk_state is not None else None
+        )
+        clone._starting_equity = self._starting_equity
+        clone._symbols = dict(self._symbols)
+        clone.kill_active = self.kill_active
+        clone.breaches = list(self.breaches)
+
+        if new_records:
+            clone._max_seq = new_records[-1].seq
+        clone._walk(new_records)
+        return clone
 
     def _on_MarketEvent(self, env: EventEnvelope) -> None:
         p = env.payload
@@ -886,7 +971,7 @@ class _Reconstruction:
             agg.on_buy(qty, px, fee)
         else:
             agg.on_sell(qty, px, fee)
-        agg.fired_on_last_seq = env.seq == self._max_seq
+        agg.last_fill_seq = env.seq
         self._fill_pnl[env.seq] = agg.realized - realized_before
         self._fill_envs.append(env)
 
@@ -926,7 +1011,7 @@ class _Reconstruction:
             family = info.family if info else "unknown"
             sleeve = info.sleeve if info else "unknown"
             status: ModelStatus = info.status if info else "unproven"
-            state = _model_state(agg, kill_active=self.kill_active)
+            state = _model_state(agg, kill_active=self.kill_active, max_seq=self._max_seq)
             sim_return = _sim_return_pct(agg, self._starting_equity)
             cells.append(
                 ModelCell(
@@ -1012,12 +1097,12 @@ class _Reconstruction:
         ]
 
 
-def _model_state(agg: _StrategyAgg | None, *, kill_active: bool) -> ModelState:
+def _model_state(agg: _StrategyAgg | None, *, kill_active: bool, max_seq: int) -> ModelState:
     if kill_active:
         return "HALTED"
     if agg is None or agg.net_qty == 0:
         return "ARMED"
-    if agg.fired_on_last_seq:
+    if agg.last_fill_seq == max_seq:
         return "FIRED"
     return "LONG" if agg.net_qty > 0 else "SHORT"
 

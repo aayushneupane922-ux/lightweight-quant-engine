@@ -166,19 +166,57 @@ construction.
   had a hardcoded `51` that needed updating once the catalog grew
   (`test_catalog_scale.py`, `test_cli_live.py` — the latter now asserts
   the N/N *shape* instead of a hardcoded N, so it won't go stale again).
-  **Still not done, deliberately deferred, and explicitly flagged rather
-  than forced**: true cross-sectional (sleeve C) and stat-arb beyond
-  simple pairs (sleeve D: Johansen basket, lead-lag, index/basket arb).
-  Discovered while implementing that the engine's `Strategy.on_market`
-  dispatch and `Context` are single-symbol by design (`Context` carries
-  one `symbol`); the existing portfolio-allocator adapters only work
-  around this with a one-shot *static* pre-baked universe snapshot
-  (`StaticWeightProjectionAdapter`), not a live per-bar multi-symbol view.
-  A genuine cross-sectional ranking strategy (rotate into the top/bottom
-  of a *live-evolving* universe each bar) needs real new plumbing — a
-  multi-symbol-aware strategy wrapper or context extension — which is a
-  bigger design decision than "add a preset" and deserves its own
-  explicit go-ahead before building, not a rushed bolt-on.
+  **Third pass: the cross-sectional engine extension the milestone's own
+  scope requires, built with an explicit owner go-ahead** (docs/14's own
+  sleeve list for M23 is "A–E, G–I, L, M" — C and D are genuinely in
+  scope, not optional). Given a design choice between (a) extending
+  `Context`/the backtest runner, (b) a fully separate multi-symbol runner
+  mirroring `live/multi_model_runner.py`, or (c) deferring C/D again, the
+  owner picked (a). `core/context.py`'s `Context` gained a backward-
+  compatible `universe_closes: Mapping[Symbol, Decimal]` field (defaults
+  to `{}`, so all 9 existing direct-construction call sites are
+  untouched); `backtest/make_session.py`'s `Session.run` now accepts a
+  merged, multi-symbol bar stream — every bar updates the shared
+  `universe_closes` snapshot and is still dispatched to `on_market`, but
+  the risk/accounting/order pipeline (`_resolve_working_orders`,
+  `_update_day_anchor`, `_emit_risk_state`, `_process_bar`'s signal→order
+  path, the equity-curve append) stays gated behind `bar.symbol ==
+  self._symbol`, unchanged from the single-symbol case — a signal
+  returned while observing a *foreign* symbol's bar is deliberately
+  discarded (`_observe_foreign_bar`), preserving the no-look-ahead
+  guarantee and keeping every session scoped to exactly one book. Because
+  every pre-v4 caller already only ever fed one symbol's bars, this is a
+  strict no-op for the entire existing single-symbol test suite (full
+  suite re-verified green after the change, before any new strategy code
+  was added on top of it) — confirmed additionally by a dedicated 7-test
+  file (`test_multi_symbol_context.py`) proving: `on_market` fires for
+  every symbol's bars; `universe_closes` accumulates correctly; a signal
+  from a foreign bar never reaches the order book; a signal from the
+  session's own bar still does; foreign bars never advance the equity
+  curve; a pure single-symbol stream behaves exactly as it always did.
+  New `models/adapters/cross_sectional_adapter.py::CrossSectionalAdapter`
+  ranks a fixed universe each bar (built directly from the raw
+  `MarketEvent`s it observes, own and foreign) and goes long only when
+  its own symbol is in the top quantile — **long-only, never short**: the
+  textbook "long top/short bottom" design is deliberately simplified,
+  since this engine's short-selling path has never been exercised by any
+  model in the catalog (declared in the manifest's `failure_modes`, not
+  silently narrowed). Four sleeve-C models registered:
+  `xsec_momentum`, `xsec_reversal` (its mirror image — bets on recent
+  underperformance bouncing back), `xsec_low_vol` (favors the calmest
+  instrument), `xsec_residual_momentum` (momentum relative to the
+  universe's own average, a simple beta-neutral proxy). 10 unit tests
+  (`test_cross_sectional_adapter.py`) plus one real, hash-chain-verified
+  multi-symbol backtest (`test_cross_sectional_backtest.py`) proving the
+  strategy actually enters a real position when its own symbol is the
+  clear cross-sectional winner. **Measured result**: catalog 81 → **85
+  models**; sleeves **10 → 11** (cross_sectional now populated), dominant
+  sleeve (still trend_momentum) down slightly to **31.8%**.
+  **Still open**: stat-arb beyond simple pairs (sleeve D: Johansen basket
+  cointegration, lead-lag, index/basket arb) — genuinely unlocked now by
+  the same `universe_closes` extension (no further engine work needed),
+  but not yet built; a natural next increment reusing this session's
+  plumbing, not a new design question.
 - **M24 · Perp/funding adapter + carry/basis sleeve (F).** The
   crown-jewel diversifiers. New funding data adapter (validated like all
   data), then the 4 carry/basis strategies. Exit gate: carry/basis models

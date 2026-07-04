@@ -86,11 +86,11 @@ def test_heavy_lib_models_quarantine_transparently_when_absent() -> None:
     reason="requires the full 'models' extra (docs/10 M13) to be installed",
 )
 def test_all_models_admit_once_the_full_models_extra_is_installed() -> None:
-    # 81 as of docs/14 (v4) M23's in-progress sleeve additions (was 51 at
+    # 85 as of docs/14 (v4) M23's in-progress sleeve additions (was 51 at
     # v3.0) -- bump this again when M24's carry/basis sleeve lands.
     catalog, _ = build_scaled_catalog(SYMBOL)
     assert not catalog.quarantined()
-    assert len(catalog.all()) == 81
+    assert len(catalog.all()) == 85
 
 
 def test_the_deliberately_weak_control_is_present() -> None:
@@ -115,6 +115,16 @@ def test_sleeves_span_multiple_return_drivers_not_just_trend() -> None:
     catalog, _ = build_scaled_catalog(SYMBOL)
     sleeves = {e.manifest.sleeve for e in catalog.all()}
     assert sleeves >= {"trend_momentum", "mean_reversion", "volatility"}
+
+
+def test_cross_sectional_sleeve_is_now_represented() -> None:
+    # docs/14 sleeve C (v4): the engine's multi-symbol Context extension
+    # unlocked real cross-sectional strategies -- confirm they're actually
+    # registered, not just designed on paper.
+    catalog, _ = build_scaled_catalog(SYMBOL)
+    xsec = [e for e in catalog.all() if e.manifest.sleeve == "cross_sectional"]
+    assert len(xsec) >= 4
+    assert all(e.manifest.id.startswith("xsec_") for e in xsec)
 
 
 def test_admitted_models_run_a_deterministic_backtest() -> None:

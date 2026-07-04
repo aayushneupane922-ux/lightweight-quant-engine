@@ -25,6 +25,7 @@ from lqe.core.types import Symbol
 from lqe.models.adapters._portfolio_projection import StaticWeightProjectionAdapter, WeightFn
 from lqe.models.adapters.arch_vol_adapter import ArchVolAdapter
 from lqe.models.adapters.changepoint_adapter import ChangePointAdapter
+from lqe.models.adapters.cross_sectional_adapter import CrossSectionalAdapter, Metric
 from lqe.models.adapters.hmm_regime_adapter import HmmRegimeAdapter
 from lqe.models.adapters.indicator_rule_adapter import IndicatorRuleAdapter
 from lqe.models.adapters.pypfopt_adapter import PyPortfolioOptAdapter
@@ -305,6 +306,64 @@ def _native_allocator_entries(symbol: Symbol) -> list[tuple[ModelManifest, Calla
     return entries
 
 
+def _cross_sectional_manifest(
+    model_id: str, family: Family, one_liner: str, n: int
+) -> ModelManifest:
+    return ModelManifest(
+        id=model_id, family=family, sleeve="cross_sectional", one_liner=one_liner,
+        economic_rationale=(
+            "Relative standing across a universe is a different return driver than this "
+            "instrument's own price path; the gate judges it, not breadth."
+        ),
+        data_needs=DataNeeds(instruments=n, kind="OHLCV"), oss_libs=["own"],
+        params_schema={"lookback": "int>1", "top_quantile": "float in (0,1]"},
+        failure_modes=[
+            "long-only simplification of a textbook long/short design (this engine's short "
+            "path is untested)",
+            "needs a genuinely interleaved multi-symbol bar stream to ever trade -- inert "
+            "(never enough universe history) when fed only this instrument's own bars",
+        ],
+    )
+
+
+def _cross_sectional_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    universe = tuple(_synthetic_universe(symbol).keys())
+    # (id, family, one_liner, lookback, top_quantile, metric)
+    specs: list[tuple[str, Family, str, int, float, Metric]] = [
+        (
+            "xsec_momentum", "momentum", "Long only when the top cross-sectional performer.",
+            20, 0.5, "momentum",
+        ),
+        (
+            "xsec_reversal", "mean_reversion",
+            "Long only when the top short-term cross-sectional loser.", 10, 0.5, "reversal",
+        ),
+        (
+            "xsec_low_vol", "volatility", "Long only when the calmest instrument in the universe.",
+            20, 0.5, "low_vol",
+        ),
+        (
+            "xsec_residual_momentum", "momentum",
+            "Long only when momentum beats the cross-sectional average (beta-neutral proxy).",
+            20, 0.34, "residual_momentum",
+        ),
+    ]
+
+    def make_factory(
+        mid: str, lookback: int, top_quantile: float, metric: Metric
+    ) -> Callable[[], Strategy]:
+        return lambda: CrossSectionalAdapter(
+            symbol=symbol, name=mid, universe=universe, lookback=lookback,
+            top_quantile=top_quantile, metric=metric,
+        )
+
+    entries: list[tuple[ModelManifest, Callable[[], Strategy]]] = []
+    for model_id, family, one_liner, lookback, top_quantile, metric in specs:
+        manifest = _cross_sectional_manifest(model_id, family, one_liner, len(universe))
+        entries.append((manifest, make_factory(model_id, lookback, top_quantile, metric)))
+    return entries
+
+
 def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
     universe = _synthetic_universe(symbol)
     hedge = [10.0, 10.5, 10.2, 10.8]
@@ -353,7 +412,8 @@ def build_scaled_catalog(symbol: Symbol) -> tuple[ModelCatalog, list[IntakeResul
     results = [
         catalog.register(manifest, factory)
         for manifest, factory in (
-            *_native_entries(symbol), *_native_allocator_entries(symbol), *_heavy_entries(symbol)
+            *_native_entries(symbol), *_native_allocator_entries(symbol),
+            *_cross_sectional_entries(symbol), *_heavy_entries(symbol),
         )
     ]
     return catalog, results

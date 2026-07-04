@@ -79,19 +79,45 @@ class Session:
         self._day_start_equity: Decimal = accounting.cash
         self._order_timestamps: list[datetime] = []
         self._intent_keys: set[str] = set()
+        self._universe_closes: dict[Symbol, Decimal] = {}
         self._strategy.on_start(self._context())
 
     def _context(self) -> Context:
-        return Context(symbol=self._symbol, position_qty=self.accounting.position_qty(self._symbol))
+        return Context(
+            symbol=self._symbol,
+            position_qty=self.accounting.position_qty(self._symbol),
+            universe_closes=dict(self._universe_closes),
+        )
 
     def run(self, bars: Iterable[MarketEvent]) -> None:
+        # `bars` may interleave more than one symbol (docs/14 v4 sleeves
+        # C/D: a cross-sectional/basket strategy needs to see other
+        # symbols' bars to rank its own universe) -- every bar updates the
+        # shared universe snapshot, but the risk/accounting/order pipeline
+        # below stays scoped to exactly this session's own `self._symbol`,
+        # unchanged from the single-symbol case (see `_observe_foreign_bar`).
         for bar in bars:
             self.engine.tick()
+            self._universe_closes[bar.symbol] = bar.c
+            if bar.symbol != self._symbol:
+                self._observe_foreign_bar(bar)
+                continue
             self._resolve_working_orders(bar)
             self._update_day_anchor(bar)
             self._reconcile()
             self._emit_risk_state(bar)
             self._process_bar(bar)
+
+    def _observe_foreign_bar(self, bar: MarketEvent) -> None:
+        # The strategy may update its own internal ranking/universe state
+        # from another symbol's bar, but can only ever act (place an order)
+        # on its own symbol's bar -- discarding any signal here preserves
+        # the no-look-ahead guarantee and keeps the risk/accounting
+        # pipeline scoped to exactly one book, same as the single-symbol
+        # case. The bar is still emitted to the audit log, so nothing is
+        # silently lost from the record.
+        self.engine.emit("MarketEvent", bar)
+        self._strategy.on_market(bar, self._context())
 
     def _update_day_anchor(self, bar: MarketEvent) -> None:
         bar_date = bar.ts_open.date()

@@ -217,19 +217,25 @@ class JobManager:
                     f"Live: {len(session.bars_so_far)} bars seeded, "
                     f"{len(session.catalog.all())} models trading{resumed_note}",
                 )
-                while not self._live_stop.is_set():
-                    if self._live_stop.wait(timeout=poll_seconds):
-                        break  # stop was requested during the wait
-                    result = session.poll_once()
-                    if result.error:
-                        self._set("live", "running", f"Poll error, retrying: {result.error}")
-                        continue
-                    if result.new_bars:
-                        self._set(
-                            "live", "running",
-                            f"{len(session.bars_so_far)} bars processed; "
-                            f"kill_active={self._kill_switch.active}",
-                        )
+                try:
+                    while not self._live_stop.is_set():
+                        if self._live_stop.wait(timeout=poll_seconds):
+                            break  # stop was requested during the wait
+                        result = session.poll_once()
+                        if result.error:
+                            self._set("live", "running", f"Poll error, retrying: {result.error}")
+                            continue
+                        if result.new_bars:
+                            autonomy_note = (
+                                " · autonomy step running" if session.autonomy_running() else ""
+                            )
+                            self._set(
+                                "live", "running",
+                                f"{len(session.bars_so_far)} bars processed; "
+                                f"kill_active={self._kill_switch.active}{autonomy_note}",
+                            )
+                finally:
+                    session.close()  # lets an in-flight background autonomy step finish
                 self._set("live", "done", f"Stopped after {len(session.bars_so_far)} bars.")
             except Exception as exc:  # noqa: BLE001 - a designed error state, not a stack trace
                 self._set("live", "error", f"{type(exc).__name__}: {exc}")

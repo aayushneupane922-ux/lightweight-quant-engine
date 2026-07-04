@@ -19,6 +19,7 @@ from typing import Literal
 import numpy as np
 import numpy.typing as npt
 
+from lqe.constants import ADAPTER_HISTORY_CAP
 from lqe.core.context import Context
 from lqe.core.events import FillEvent, MarketEvent, SignalEvent
 from lqe.core.types import Symbol
@@ -470,6 +471,15 @@ class IndicatorRuleAdapter:
         self._highs.append(float(ev.h))
         self._lows.append(float(ev.l))
         self._timestamps.append(ev.ts_open.timestamp())
+        # Bound the raw history (perf phase 3c) so the per-bar full-window
+        # recompute below stays O(ADAPTER_HISTORY_CAP), not O(session).
+        # Trimmed at 2x the cap (amortized O(1)); every preset's real
+        # lookback fits well inside the cap -- see constants.py.
+        if len(self._closes) > 2 * ADAPTER_HISTORY_CAP:
+            del self._closes[: -ADAPTER_HISTORY_CAP]
+            del self._highs[: -ADAPTER_HISTORY_CAP]
+            del self._lows[: -ADAPTER_HISTORY_CAP]
+            del self._timestamps[: -ADAPTER_HISTORY_CAP]
 
         # self.params is dict[str, object] per the Strategy protocol; every
         # preset here only ever reads numeric values out of it.

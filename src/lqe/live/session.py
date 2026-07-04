@@ -17,7 +17,10 @@ one shared `KillSwitch` halts every model's new entries at once.
 
 from __future__ import annotations
 
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -132,6 +135,17 @@ class LiveSession:
         self._merge = IncrementalMerge()
         self._last_reader: StateReader | None = None
         self._persisted = 0
+        # Perf phase 3b: the autonomy step (Optuna trials + validation
+        # backtests + optional LLM calls, 8-30s+) runs on this single
+        # background worker instead of blocking bar processing. One worker +
+        # FIFO submission means steps run exactly once, in order, each on
+        # the bar snapshot captured when it came due -- the same step
+        # count/inputs/seeds as a synchronous run; only completion time
+        # shifts. Safe because the orchestrator appends only to its OWN
+        # audit chain (never persisted, never replayed); the trade chain
+        # stays poll-thread-only.
+        self._autonomy_pool: ThreadPoolExecutor | None = None
+        self._pending_steps: deque[Future[AutonomyStepSummary]] = deque()
         # `desk_data`, when given (docs/13 M18: the GUI job runner passes the
         # server's already-running DeskData so the dashboard updates in
         # place), is reused rather than built fresh -- its ControlPlane
@@ -242,7 +256,8 @@ class LiveSession:
             # hiccup must not crash a long-running live session.
             return PollResult(new_bars=0, error=f"{type(exc).__name__}: {exc}")
         if not new_bars:
-            return PollResult(new_bars=0)
+            # a background autonomy step may have finished since last poll
+            return PollResult(new_bars=0, autonomy_step=self._drain_completed_step())
         return PollResult(new_bars=len(new_bars), autonomy_step=self._process_new_bars(new_bars))
 
     def _process_new_bars(self, new_bars: list[MarketEvent]) -> AutonomyStepSummary | None:
@@ -252,29 +267,77 @@ class LiveSession:
             self.bars_so_far.append(bar)
             self._bars_since_step += 1
 
-        # Grow the orchestrator's data window as history accumulates. `bars`
-        # is a public dataclass field; `_search_bars` mirrors exactly the
-        # slice `Orchestrator.__post_init__` itself computes from
-        # `bars`/`search_fraction` -- re-deriving it here (rather than
-        # re-running `__post_init__`, which would also reset its own engine
-        # and discard prior autonomy events) keeps that invariant intact.
-        self.orchestrator.bars = list(self.bars_so_far)
-        cut = max(2, int(len(self.orchestrator.bars) * self.orchestrator.search_fraction))
-        self.orchestrator._search_bars = list(self.orchestrator.bars[:cut])  # noqa: SLF001
+        # Persist + refresh the desk BEFORE scheduling autonomy work (perf
+        # phase 3a) -- the UI shows fresh bars even while a step runs.
+        self._persist_and_refresh()
 
-        summary: AutonomyStepSummary | None = None
         if self._bars_since_step >= self.config.autonomy_every:
             self._bars_since_step = 0
             self.step_count += 1
-            state = self.orchestrator.step(now=new_bars[-1].ts_open)
-            summary = AutonomyStepSummary(
-                step_count=self.step_count, focus_model=state.focus_model,
-                verdict=state.verdict, promoted=state.promoted, narration=state.narration,
+            if self._autonomy_pool is None:
+                self._autonomy_pool = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="lqe-autonomy"
+                )
+            self._pending_steps.append(
+                self._autonomy_pool.submit(
+                    self._run_autonomy_step,
+                    self.step_count,
+                    new_bars[-1].ts_open,
+                    list(self.bars_so_far),
+                )
             )
 
+        return self._drain_completed_step()
+
+    def _run_autonomy_step(
+        self, step_number: int, now: datetime, bars_snapshot: list[MarketEvent]
+    ) -> AutonomyStepSummary:
+        """One orchestrator step on the worker thread, over the bar snapshot
+        captured when the step came due. `bars` is a public dataclass field;
+        `_search_bars` mirrors exactly the slice `Orchestrator.__post_init__`
+        itself computes from `bars`/`search_fraction` -- re-deriving it here
+        (rather than re-running `__post_init__`, which would also reset its
+        own engine and discard prior autonomy events) keeps that invariant
+        intact. The orchestrator is only ever touched from this single
+        worker (steps are FIFO on a one-thread pool), so per-step inputs and
+        its audit chain match a synchronous run exactly."""
+        self.orchestrator.bars = bars_snapshot
+        cut = max(2, int(len(bars_snapshot) * self.orchestrator.search_fraction))
+        self.orchestrator._search_bars = list(bars_snapshot[:cut])  # noqa: SLF001
+        state = self.orchestrator.step(now=now)
+        return AutonomyStepSummary(
+            step_count=step_number, focus_model=state.focus_model,
+            verdict=state.verdict, promoted=state.promoted, narration=state.narration,
+        )
+
+    def _drain_completed_step(self) -> AutonomyStepSummary | None:
+        """Report the oldest finished background step, if any (one per poll,
+        FIFO, so every step is surfaced in order). Also refreshes the desk
+        so the step's autonomy events appear as soon as they exist."""
+        if not self._pending_steps or not self._pending_steps[0].done():
+            return None
+        future = self._pending_steps.popleft()
+        if future.cancelled():  # dropped by close() before it started
+            return None
+        summary = future.result()
+        self.desk_data.set_state_reader(self._rebuild_state_reader())
+        return summary
+
+    def autonomy_running(self) -> bool:
+        return bool(self._pending_steps) and not self._pending_steps[0].done()
+
+    def close(self) -> None:
+        """Let the in-flight autonomy step (if any) finish, drop queued
+        not-yet-started ones, and stop the worker. Completed steps stay
+        drainable. Safe to call more than once; sessions that never
+        scheduled a step no-op."""
+        if self._autonomy_pool is not None:
+            self._autonomy_pool.shutdown(wait=True, cancel_futures=True)
+            self._autonomy_pool = None
+
+    def _persist_and_refresh(self) -> None:
         if self.config.out_path is not None:
             self._persisted = self.trade_engine.audit.append_jsonl(
                 self.config.out_path, start=self._persisted
             )
         self.desk_data.set_state_reader(self._rebuild_state_reader())
-        return summary

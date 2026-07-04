@@ -45,20 +45,28 @@ class StatsmodelsPairsAdapter:
         window: int = 60,
         entry_z: float = 2.0,
         exit_z: float = 0.5,
+        refit_every: int = 1,
     ) -> None:
         self._sm = _import_statsmodels()
         self.name = name
-        self.params: dict[str, object] = {"window": window, "entry_z": entry_z, "exit_z": exit_z}
+        self.params: dict[str, object] = {
+            "window": window, "entry_z": entry_z, "exit_z": exit_z, "refit_every": refit_every,
+        }
         self._symbol = symbol
         self._hedge_closes = list(hedge_closes)
         self._window = window
         self._entry_z = entry_z
         self._exit_z = exit_z
+        self._refit_every = refit_every
+        self._bars_since_fit = 0
+        self._hedge_ratio: float | None = None
         self._closes: list[float] = []
         self._position: Literal["FLAT", "LONG"] = "FLAT"
 
     def on_start(self, ctx: Context) -> None:
         self._closes.clear()
+        self._bars_since_fit = 0
+        self._hedge_ratio = None
         self._position = "LONG" if ctx.position_qty > 0 else "FLAT"
 
     def on_market(self, ev: MarketEvent, ctx: Context) -> list[SignalEvent]:
@@ -71,9 +79,18 @@ class StatsmodelsPairsAdapter:
 
         y = np.array(self._closes[-self._window :])
         x = np.array(self._hedge_closes[i - self._window + 1 : i + 1])
-        design = self._sm.add_constant(x)  # type: ignore[attr-defined]
-        fit = self._sm.OLS(y, design).fit()  # type: ignore[attr-defined]
-        hedge_ratio = float(fit.params[1])
+        # The OLS refit is the expensive part; the cached hedge ratio is
+        # reused between refits (same schedule pattern as the arch/hmm/
+        # supervised adapters). `refit_every=1` (the default) refits every
+        # bar -- byte-identical to the pre-refit_every behavior. The z-score
+        # itself is still recomputed every bar over the current window.
+        self._bars_since_fit += 1
+        if self._hedge_ratio is None or self._bars_since_fit >= self._refit_every:
+            self._bars_since_fit = 0
+            design = self._sm.add_constant(x)  # type: ignore[attr-defined]
+            fit = self._sm.OLS(y, design).fit()  # type: ignore[attr-defined]
+            self._hedge_ratio = float(fit.params[1])
+        hedge_ratio = self._hedge_ratio
         spread = y - hedge_ratio * x
         std = float(np.std(spread))
         if std == 0:

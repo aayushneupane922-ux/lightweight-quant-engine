@@ -624,20 +624,24 @@ def _cmd_live(args: argparse.Namespace) -> int:
             if result.error:
                 print(f"  [poll error, retrying next cycle] {result.error}")
                 continue
-            if result.new_bars == 0:
-                continue
             if result.autonomy_step:
+                # steps run on a background worker now; a summary may arrive
+                # on a later poll than the one that scheduled it
                 s = result.autonomy_step
                 tag = " -> promoted" if s.promoted else ""
                 print(f"[autonomy step {s.step_count}] {s.focus_model}: {s.verdict}{tag}")
                 if s.narration:
                     print(f"    {s.narration}")
+            if result.new_bars == 0:
+                continue
             print(
                 f"processed {result.new_bars} new bar(s); total bars={len(session.bars_so_far)}; "
                 f"kill_active={kill_switch.active}"
             )
     except KeyboardInterrupt:
         print("\nstopped.")
+    finally:
+        session.close()  # lets an in-flight background autonomy step finish
     return 0
 
 

@@ -16,6 +16,7 @@ from typing import Literal
 
 import numpy as np
 
+from lqe.constants import ADAPTER_HISTORY_CAP
 from lqe.core.context import Context
 from lqe.core.events import FillEvent, MarketEvent, SignalEvent
 from lqe.core.types import Symbol
@@ -60,6 +61,9 @@ class ChangePointAdapter:
         if ev.symbol != self._symbol:
             return []
         self._closes.append(float(ev.c))
+        # bound raw history (perf phase 3c) -- all reads are [-window:] tails
+        if len(self._closes) > 2 * ADAPTER_HISTORY_CAP:
+            del self._closes[: -ADAPTER_HISTORY_CAP]
         if len(self._closes) < self._window + 1:
             return []
 

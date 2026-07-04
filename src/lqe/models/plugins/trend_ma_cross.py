@@ -9,6 +9,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Literal
 
+from lqe.constants import ADAPTER_HISTORY_CAP
 from lqe.core.context import Context
 from lqe.core.events import FillEvent, MarketEvent, SignalEvent
 from lqe.core.types import Symbol
@@ -41,6 +42,9 @@ class TrendMaCross:
         if ev.symbol != self._symbol:
             return []
         self._closes.append(ev.c)
+        # bound raw history (perf phase 3c) -- all reads are [-window:] tails
+        if len(self._closes) > 2 * ADAPTER_HISTORY_CAP:
+            del self._closes[: -ADAPTER_HISTORY_CAP]
         if len(self._closes) < self._slow:
             return []
 

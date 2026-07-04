@@ -86,11 +86,11 @@ def test_heavy_lib_models_quarantine_transparently_when_absent() -> None:
     reason="requires the full 'models' extra (docs/10 M13) to be installed",
 )
 def test_all_models_admit_once_the_full_models_extra_is_installed() -> None:
-    # 94 as of docs/14 (v4) M23's in-progress sleeve additions (was 51 at
-    # v3.0) -- bump this again when M24's carry/basis sleeve lands.
+    # 104 as of docs/14 (v4) M24's carry/basis sleeve (was 51 at v3.0, 94
+    # after M23) -- bump this again when M25's sleeves land.
     catalog, _ = build_scaled_catalog(SYMBOL)
     assert not catalog.quarantined()
-    assert len(catalog.all()) == 94
+    assert len(catalog.all()) == 104
 
 
 def test_the_deliberately_weak_control_is_present() -> None:
@@ -140,6 +140,24 @@ def test_stat_arb_sleeve_goes_beyond_the_original_single_pairs_model() -> None:
     assert any(i.startswith("stat_arb_distance_") for i in ids)
     assert any(i.startswith("stat_arb_lead_lag_") for i in ids)
     assert any(i.startswith("stat_arb_basket_") for i in ids)
+
+
+def test_carry_basis_sleeve_is_now_represented() -> None:
+    # docs/14 sleeve F (v4): funding/basis-driven strategies -- the
+    # "crown-jewel diversifiers" per docs/14 §2, since their signal comes
+    # from funding/structure rather than price direction.
+    catalog, _ = build_scaled_catalog(SYMBOL)
+    carry = [e for e in catalog.all() if e.manifest.sleeve == "carry_basis"]
+    assert len(carry) >= 8
+    ids = {e.manifest.id for e in carry}
+    assert any(i.startswith("carry_funding_level_") for i in ids)
+    assert any(i.startswith("carry_funding_momentum_") for i in ids)
+    assert any(i.startswith("carry_funding_reversion_") for i in ids)
+    assert any(i.startswith("carry_basis_") for i in ids)
+    assert any(i.startswith("carry_cross_exchange_") for i in ids)
+    for entry in carry:
+        assert entry.manifest.family == "carry"
+        assert entry.manifest.data_needs.kind == "OHLCV+FUNDING"
 
 
 def test_admitted_models_run_a_deterministic_backtest() -> None:

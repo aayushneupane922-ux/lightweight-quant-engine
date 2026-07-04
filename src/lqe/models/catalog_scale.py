@@ -17,15 +17,22 @@ counting spans this whole surface (M8's registry, F2).
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
 
 import numpy as np
 
 from lqe.core.types import Symbol
 from lqe.models.adapters._portfolio_projection import StaticWeightProjectionAdapter, WeightFn
 from lqe.models.adapters.arch_vol_adapter import ArchVolAdapter
+from lqe.models.adapters.basis_carry_adapter import BasisCarryAdapter
 from lqe.models.adapters.changepoint_adapter import ChangePointAdapter
+from lqe.models.adapters.cross_exchange_funding_adapter import CrossExchangeFundingAdapter
 from lqe.models.adapters.cross_sectional_adapter import CrossSectionalAdapter, Metric
+from lqe.models.adapters.funding_carry_adapter import (
+    FundingCarryAdapter,
+    FundingMomentumAdapter,
+)
 from lqe.models.adapters.hmm_regime_adapter import HmmRegimeAdapter
 from lqe.models.adapters.indicator_rule_adapter import IndicatorRuleAdapter
 from lqe.models.adapters.johansen_adapter import JohansenBasketAdapter
@@ -451,6 +458,143 @@ def _stat_arb_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], 
     return entries
 
 
+def _synthetic_funding_history(
+    seed: int, n: int = 2200, base_rate: float = 0.0001,
+    amplitude: float = 0.00015, noise_std: float = 0.00035,
+) -> list[tuple[datetime, float]]:
+    # docs/14 sleeve F (v4): a fixed side-channel funding-rate series, same
+    # "known series, looked up per bar" pattern as `_synthetic_universe`
+    # above and `pairs_ols`'s `hedge_closes`. Anchored well before this
+    # project's own demo/test bar timestamps (2026-01-01, docs/10
+    # `make_demo_run.py`) and extended ~2 years past them (8h funding
+    # cadence) so any realistic backtest/live bar timestamp finds a real,
+    # varying (sinusoid + noise) forward-filled rate rather than a single
+    # frozen value -- the known limitation `pairs_ols`'s 4-point
+    # `hedge_closes` has (it never trades past its first 4 bars) is
+    # deliberately not repeated here. `noise_std` dominates `amplitude`
+    # deliberately: real funding rates jump around per-settlement more than
+    # they trend smoothly, and a noise-dominated series means even a short
+    # (few-observation) window has a real chance of crossing an entry
+    # threshold, rather than depending on which slice of a slow sine wave a
+    # given calendar window happens to land on.
+    start = datetime(2025, 1, 1, tzinfo=UTC)
+    rng = np.random.default_rng(seed)
+    noise = rng.normal(0.0, noise_std, n)
+    return [
+        (
+            start + timedelta(hours=8 * i),
+            base_rate + amplitude * float(np.sin(i / 8.0)) + float(noise[i]),
+        )
+        for i in range(n)
+    ]
+
+
+def _carry_basis_manifest(model_id: str, one_liner: str, needs_perp: bool) -> ModelManifest:
+    # docs/14 sleeve F (v4): the textbook carry/basis trade is long spot /
+    # short perp, market-neutral. This engine's short-selling path is out
+    # of scope (`portfolio/accounting.py` raises rather than silently
+    # going short) -- the same honest long-only simplification sleeve C/D
+    # already declare, not silently narrowed here either.
+    return ModelManifest(
+        id=model_id, family="carry", sleeve="carry_basis", one_liner=one_liner,
+        economic_rationale=(
+            "A directional bet on the spot instrument's own price, gated by a funding/basis "
+            "signal historically associated with carry opportunity -- NOT a market-neutral "
+            "carry harvest (the paired short-perp leg is out of scope); the gate judges it, "
+            "not breadth."
+        ),
+        data_needs=DataNeeds(
+            instruments=2 if needs_perp else 1, kind="OHLCV+FUNDING",
+        ),
+        oss_libs=["own"],
+        params_schema={"entry_rate": "float", "exit_rate": "float"},
+        failure_modes=[
+            "long-only simplification of a market-neutral carry/basis trade (this engine's "
+            "short path is untested); P&L is ordinary spot price movement, not collected "
+            "funding payments",
+            "needs real funding-rate history (`data/funding_adapter.py::CcxtFundingRateAdapter` "
+            "+ ingest) to be more than a synthetic-side-channel demo",
+        ],
+    )
+
+
+def _carry_basis_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
+    perp_symbol = f"{symbol}-PERP"
+    funding_a = _synthetic_funding_history(seed=1)
+    funding_b = _synthetic_funding_history(seed=2)
+
+    entries: list[tuple[ModelManifest, Callable[[], Strategy]]] = []
+
+    def carry_factory(mid: str, entry_rate: float, exit_rate: float) -> Callable[[], Strategy]:
+        return lambda: FundingCarryAdapter(
+            symbol=symbol, name=mid, funding_history=funding_a,
+            entry_rate=entry_rate, exit_rate=exit_rate,
+        )
+
+    for i, (entry_rate, exit_rate) in enumerate(((0.0002, 0.0), (0.0003, 0.0001))):
+        mid = f"carry_funding_level_{i}"
+        entries.append((
+            _carry_basis_manifest(mid, "Long spot when funding-rate level is attractive.", False),
+            carry_factory(mid, entry_rate, exit_rate),
+        ))
+
+    def momentum_factory(
+        mid: str, mode: Literal["momentum", "reversion"], lookback: int,
+        entry_threshold: float, exit_threshold: float,
+    ) -> Callable[[], Strategy]:
+        return lambda: FundingMomentumAdapter(
+            symbol=symbol, name=mid, funding_history=funding_a, mode=mode, lookback=lookback,
+            entry_threshold=entry_threshold, exit_threshold=exit_threshold,
+        )
+
+    for i, (lookback, entry_threshold) in enumerate(((3, 0.0002), (5, 0.0003))):
+        mid = f"carry_funding_momentum_{i}"
+        entries.append((
+            _carry_basis_manifest(mid, "Long spot when funding-rate momentum is rising.", False),
+            momentum_factory(mid, "momentum", lookback, entry_threshold, 0.0),
+        ))
+    for i, (lookback, entry_threshold) in enumerate(((3, 0.0003), (5, 0.0004))):
+        mid = f"carry_funding_reversion_{i}"
+        entries.append((
+            _carry_basis_manifest(
+                mid, "Long spot on a deep negative funding-rate dip.", False
+            ),
+            momentum_factory(mid, "reversion", lookback, entry_threshold, 0.0),
+        ))
+
+    def basis_factory(mid: str, entry_basis: float, exit_basis: float) -> Callable[[], Strategy]:
+        return lambda: BasisCarryAdapter(
+            symbol=symbol, name=mid, perp_symbol=perp_symbol,
+            entry_basis=entry_basis, exit_basis=exit_basis,
+        )
+
+    for i, (entry_basis, exit_basis) in enumerate(((0.005, 0.0), (0.01, 0.002))):
+        mid = f"carry_basis_{i}"
+        one_liner = f"Long spot when {perp_symbol} trades at a rich premium."
+        entries.append((
+            _carry_basis_manifest(mid, one_liner, True),
+            basis_factory(mid, entry_basis, exit_basis),
+        ))
+
+    def cross_exchange_factory(
+        mid: str, entry_diff: float, exit_diff: float
+    ) -> Callable[[], Strategy]:
+        return lambda: CrossExchangeFundingAdapter(
+            symbol=symbol, name=mid, funding_history_a=funding_a, funding_history_b=funding_b,
+            entry_diff=entry_diff, exit_diff=exit_diff,
+        )
+
+    for i, (entry_diff, exit_diff) in enumerate(((0.0002, 0.0), (0.0003, 0.0001))):
+        mid = f"carry_cross_exchange_{i}"
+        one_liner = "Long spot on a favorable cross-exchange funding gap."
+        entries.append((
+            _carry_basis_manifest(mid, one_liner, False),
+            cross_exchange_factory(mid, entry_diff, exit_diff),
+        ))
+
+    return entries
+
+
 def _heavy_entries(symbol: Symbol) -> list[tuple[ModelManifest, Callable[[], Strategy]]]:
     universe = _synthetic_universe(symbol)
     hedge = [10.0, 10.5, 10.2, 10.8]
@@ -505,7 +649,7 @@ def build_scaled_catalog(symbol: Symbol) -> tuple[ModelCatalog, list[IntakeResul
         for manifest, factory in (
             *_native_entries(symbol), *_native_allocator_entries(symbol),
             *_cross_sectional_entries(symbol), *_stat_arb_entries(symbol),
-            *_heavy_entries(symbol),
+            *_carry_basis_entries(symbol), *_heavy_entries(symbol),
         )
     ]
     return catalog, results

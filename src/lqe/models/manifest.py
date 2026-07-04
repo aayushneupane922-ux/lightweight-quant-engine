@@ -14,6 +14,10 @@ from pydantic import BaseModel, ConfigDict
 Family = Literal[
     "trend", "momentum", "mean_reversion", "pairs", "volatility",
     "regime", "portfolio", "risk_allocation", "supervised", "online",
+    # docs/14 §2 (v4): sleeve F's funding/basis-driven strategies -- a
+    # genuinely new technical category, distinct from "pairs" (no spread
+    # between two priced legs) and from every price-only family above.
+    "carry",
 ]
 
 # docs/14 §1-2 (v4): the return-driver "sleeve" a model belongs to, for

@@ -30,6 +30,7 @@ def build_desk_data(
     audit_path: Path | None = None,
     symbol: str = "BTC-USDT",
     experiment_rows: list[ExperimentRow] | None = None,
+    diversification_path: Path | None = None,
 ) -> DeskData:
     catalog, results = build_default_catalog(symbol)
     quarantined = {q.model_id: q.reasons for q in catalog.quarantined()}
@@ -77,4 +78,5 @@ def build_desk_data(
         control=control,
         catalog_rows=catalog_rows,
         experiment_rows=experiment_rows or [],
+        diversification_path=diversification_path,
     )

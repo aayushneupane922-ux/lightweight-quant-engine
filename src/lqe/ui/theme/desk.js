@@ -304,6 +304,12 @@
     if (unchanged) return;
     if (payload.tape) paintTape(payload.tape);
     if (payload.blotter) handleBlotterFrame(payload.blotter);
+    // docs/15 V5 M29 "The Promotion Moment": only the Engine view defines
+    // this hook (neural_web.js) -- every other page just ignores the frame's
+    // promotions, same pattern as tape/blotter existing elsewhere unused.
+    if (payload.promotions && window.LQE_onPromotions) {
+      window.LQE_onPromotions(payload.promotions);
+    }
   }
 
   function connect() {

@@ -222,7 +222,10 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
 
     @app.get("/engine", response_class=HTMLResponse)
     def engine(request: Request) -> Any:
-        return templates.TemplateResponse(request, "engine.html", _ctx(request, "engine"))
+        return templates.TemplateResponse(
+            request, "engine.html",
+            _ctx(request, "engine", diversification=data.diversification()),
+        )
 
     @app.get("/risk", response_class=HTMLResponse)
     def risk(request: Request) -> Any:
@@ -272,6 +275,13 @@ def create_app(data: DeskData, *, launch_state: LaunchState | None = None) -> Fa
         # docs/13 M21: the "Engine Room" feed; `at_seq` replays it exactly
         # as it was at that point in the session (same pattern as /api/graph)
         return JSONResponse(data.conversation(at_seq=at_seq).model_dump(mode="json"))
+
+    @app.get("/api/diversification")
+    def api_diversification() -> JSONResponse:
+        # docs/15 V5 M29: a plain disk read of the offline
+        # diversification_report.py artifact, not the engine hot path --
+        # "computed": false + an honest reason when it doesn't exist yet.
+        return JSONResponse(data.diversification().model_dump(mode="json"))
 
     # docs/13 M19: the Floor hero chart's data — read-only, same
     # `StateReader` the rest of the desk already reads from. `symbol`

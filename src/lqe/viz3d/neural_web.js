@@ -14,7 +14,7 @@
 
   var COLORS = {
     LONG: "#35C08B", SHORT: "#F0524D", FIRED: "#F0A62A", HALTED: "#F0524D",
-    ARMED: "#6B7A90", meta: "#7C7BF2", regime: "#6B7A90",
+    ARMED: "#6B7A90", meta: "#7C7BF2", regime: "#6B7A90", overflow: "#4A5568",
   };
 
   var canvas = document.getElementById("web");
@@ -30,6 +30,16 @@
   var selected = null;
   var maxSeq = 0;
 
+  // docs/15 V5 M29 "The Promotion Moment": id -> { t0, ringMs, dsr, pbo,
+  // config_version } for a node currently mid-promotion-pulse.
+  var promotedIds = {};
+  // -1 until the first graph load sets it to that load's max_seq -- a
+  // session opened with promotions already in its history should NOT
+  // replay all of them as "new" the instant the WS connects; only a
+  // promotion that happens AFTER the page was opened is a fresh moment.
+  var lastPromotionSeq = -1;
+  var firstGraphLoaded = false;
+
   function resize() {
     var r = canvas.parentElement.getBoundingClientRect();
     canvas.width = r.width;
@@ -39,19 +49,34 @@
   function nodeColor(n) {
     if (n.kind === "meta") return COLORS.meta;
     if (n.kind === "regime") return COLORS.regime;
+    if (n.kind === "overflow") return COLORS.overflow;
     return COLORS[n.state] || COLORS.ARMED;
   }
   function nodeRadius(n) {
     if (n.kind === "meta") return 16;
     if (n.kind === "regime") return 12;
+    if (n.kind === "overflow") return 6;
     return 7 + n.conviction * 9;
   }
+  function nodeAnchor(n) {
+    if (n.kind === "tracked") return 0.72;
+    if (n.kind === "meta") return 0.5;
+    if (n.kind === "regime") return 0.15;
+    if (n.kind === "overflow") return 0.28;
+    return 0.32;
+  }
 
-  // seed positions: tracked core on the right (bright), sandbox swarm left
-  function seed() {
+  // Seed ONLY brand-new nodes (no carried-over position) at their region
+  // anchor; a node that already existed keeps whatever position `apply()`
+  // carried over for it. This is what makes the Promotion Moment read as a
+  // node smoothly crossing from the dim sandbox into the bright tracked
+  // core (via the existing anchor-pull physics in `step()`) rather than the
+  // whole graph reshuffling on every reload.
+  function seedNew() {
     var w = canvas.width, h = canvas.height;
     nodes.forEach(function (n, i) {
-      var region = n.kind === "tracked" ? 0.72 : n.kind === "meta" ? 0.5 : n.kind === "regime" ? 0.15 : 0.32;
+      if (n.x !== undefined) return;
+      var region = nodeAnchor(n);
       n.x = w * region + (Math.random() - 0.5) * 120;
       n.y = h * (0.2 + 0.6 * ((i % 7) / 6)) + (Math.random() - 0.5) * 60;
       n.vx = 0; n.vy = 0;
@@ -84,8 +109,7 @@
       b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
     });
     nodes.forEach(function (n) {
-      var anchor = n.kind === "tracked" ? 0.72 : n.kind === "meta" ? 0.5 : n.kind === "regime" ? 0.15 : 0.32;
-      n.vx += (w * anchor - n.x) * 0.002;
+      n.vx += (w * nodeAnchor(n) - n.x) * 0.002;
       n.x += n.vx * 0.85; n.y += n.vy * 0.85;
       n.vx *= 0.86; n.vy *= 0.86;
     });
@@ -109,6 +133,7 @@
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     });
 
+    var now = performance.now();
     nodes.forEach(function (n) {
       var r = nodeRadius(n);
       if (n.status === "validated") {
@@ -119,6 +144,22 @@
       ctx.globalAlpha = n.kind === "sandbox" ? 0.75 : 1;
       ctx.fill(); ctx.globalAlpha = 1;
       if (selected && selected.id === n.id) { ctx.strokeStyle = "#E9EEF5"; ctx.lineWidth = 1.5; ctx.stroke(); }
+      // docs/15 V5 M29: an expanding gold ring around a just-promoted node.
+      // Skipped entirely under reduced-motion (ringMs is set to 0 there),
+      // matching "reduced-motion -> instant final state, no interpolation."
+      var promo = promotedIds[n.id];
+      if (promo && promo.ringMs > 0) {
+        var elapsed = now - promo.t0;
+        if (elapsed < promo.ringMs) {
+          var t = elapsed / promo.ringMs;
+          ctx.beginPath(); ctx.arc(n.x, n.y, r + 4 + t * 22, 0, 7);
+          ctx.strokeStyle = "rgba(240,166,42," + (0.85 * (1 - t)).toFixed(3) + ")";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        } else {
+          delete promotedIds[n.id];
+        }
+      }
       ctx.fillStyle = "#9aa6b6"; ctx.font = "10px monospace";
       ctx.fillText(n.label, n.x + r + 3, n.y + 3);
     });
@@ -151,6 +192,7 @@
       '<div class="im">' + n.label + '</div>' +
       '<div class="ik">' + n.kind + " · " + n.family + "</div>" +
       '<table class="kv2">' +
+      row("Instrument", n.symbol) +
       row("State", n.state) + row("Status", n.status) +
       row("Sim return", n.sim_return.toFixed(2) + "%") +
       row("Sample (n)", n.n_trades) +
@@ -159,7 +201,26 @@
   function row(k, v) { return "<tr><td>" + k + "</td><td>" + v + "</td></tr>"; }
 
   function apply(payload) {
-    nodes = payload.nodes.map(function (n) { return Object.assign({}, n); });
+    if (!firstGraphLoaded) {
+      firstGraphLoaded = true;
+      lastPromotionSeq = payload.max_seq;
+    }
+    var prevById = byId;
+    nodes = payload.nodes.map(function (n) {
+      var merged = Object.assign({}, n);
+      var prev = prevById[n.id];
+      // Carry over an existing node's position instead of reshuffling the
+      // whole graph on every reload -- EXCEPT a node that just became
+      // "tracked" under reduced-motion, which must jump straight to its
+      // final anchor (no interpolation) rather than sit frozen wherever it
+      // was in the sandbox, since `step()` never runs under reduced-motion.
+      var justPromotedReduced = reduced && promotedIds[n.id] &&
+        (!prev || prev.kind !== "tracked") && n.kind === "tracked";
+      if (prev && !justPromotedReduced) {
+        merged.x = prev.x; merged.y = prev.y; merged.vx = prev.vx; merged.vy = prev.vy;
+      }
+      return merged;
+    });
     links = payload.links;
     byId = {}; nodes.forEach(function (n) { byId[n.id] = n; });
     maxSeq = payload.max_seq;
@@ -167,12 +228,43 @@
     if (sc) { sc.max = maxSeq; sc.value = payload.at_seq; }
     var lbl = document.getElementById("seq-label");
     if (lbl) lbl.textContent = "seq " + payload.at_seq + " / " + maxSeq;
-    ticks = 0; resize(); seed();
+    ticks = 0; resize(); seedNew();
   }
 
   function load(atSeq) {
     var url = "/api/graph" + (atSeq != null ? "?at_seq=" + atSeq : "");
     fetch(url).then(function (r) { return r.json(); }).then(apply);
+  }
+
+  // docs/15 V5 M29 "The Promotion Moment": called by desk.js's shared /ws
+  // handler with `payload.promotions` (seq-ordered, only genuinely new rows
+  // since the last ping -- same idiom as the Floor's new-fill detection).
+  window.LQE_onPromotions = function (rows) {
+    var newOnes = (rows || []).filter(function (r) { return r.seq > lastPromotionSeq; });
+    if (!newOnes.length) return;
+    newOnes.forEach(function (r) {
+      if (r.seq > lastPromotionSeq) lastPromotionSeq = r.seq;
+      promotedIds[r.model_id + "::" + r.symbol] = {
+        t0: performance.now(), ringMs: reduced ? 0 : 1200,
+      };
+      showPromotionBanner(r);
+    });
+    load(null); // refetch so this node's kind flips sandbox -> tracked
+  };
+
+  function showPromotionBanner(r) {
+    var host = document.body;
+    var el = document.createElement("div");
+    el.className = "promotion-banner";
+    el.innerHTML = '<span class="tag">SIMULATED</span>Validated out-of-sample — promoted ' +
+      "to the tracked book (DSR " + Number(r.dsr).toFixed(2) + ", PBO " +
+      Number(r.pbo).toFixed(2) + ").";
+    host.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add("show"); });
+    setTimeout(function () {
+      el.classList.remove("show");
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 400);
+    }, 6000);
   }
 
   // interaction: pan (drag empty), zoom (wheel), hover/click a node

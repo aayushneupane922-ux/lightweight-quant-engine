@@ -7,9 +7,11 @@
 </div>
 <div class="honesty">
   <span class="tag">SIMULATED — NOT EDGE</span>
-  Nodes are models (size = attention, colour = state), edges are data-flow / meta attention / gate
-  promotions. The bright right region is the <b>validated tracked</b> core; the dim left swarm is
-  <b>exploratory / unvalidated</b> sandbox. Node stats show sample sizes.
+  Nodes are (model, instrument) pairs — size = attention, colour = state — edges are data-flow /
+  meta attention / gate promotions. The bright right region is the <b>validated tracked</b> core;
+  the dim left swarm is <b>exploratory / unvalidated</b> sandbox. A faint "+N idle" marker per
+  instrument stands in for the rest once the graph exceeds its node budget — a count, never
+  invented state. Node stats show sample sizes.
 </div>
 
 <div class="web-wrap">
@@ -23,6 +25,7 @@
       <div><span class="dot" style="background:#F0A62A"></span>fired</div>
       <div><span class="dot" style="background:#7A88A8"></span>armed</div>
       <div><span class="dot" style="background:#7C7BF2"></span>meta-layer</div>
+      <div><span class="dot" style="background:#4A5568"></span>idle overflow</div>
     </div>
   </div>
 </div>
@@ -31,6 +34,37 @@
   <span class="mono" id="seq-label">seq 0 / 0</span>
   <input type="range" id="scrubber" min="0" max="0" value="0" step="1">
   <span class="mute">timeline replay (deterministic)</span>
+</div>
+
+<div class="diversification-panel">
+  <span class="section-h">Diversification score</span>
+  {% if diversification.computed %}
+  <div class="hero-kpi">
+    <div class="hero-kpi-item">
+      <span class="hero-kpi-k">Effective bets</span>
+      <span class="hero-kpi-v mono">{{ "%.2f"|format(diversification.effective_number_of_bets) }}</span>
+    </div>
+    <div class="hero-kpi-item">
+      <span class="hero-kpi-k">Avg pairwise corr</span>
+      <span class="hero-kpi-v mono">{{ "%.3f"|format(diversification.average_pairwise_correlation) }}</span>
+    </div>
+    <div class="hero-kpi-item">
+      <span class="hero-kpi-k">Sleeves</span>
+      <span class="hero-kpi-v mono">{{ diversification.n_sleeves }}</span>
+    </div>
+  </div>
+  <table class="kv2">
+    <tr><td>Models measured</td><td class="mono">{{ diversification.n_models }}</td></tr>
+    <tr><td>Dominant sleeve</td><td class="mono">{{ diversification.dominant_sleeve }}
+      ({{ "%.1f"|format(diversification.max_sleeve_share * 100) }}%)</td></tr>
+  </table>
+  <div class="stale-note">
+    SIMULATED · computed offline on held-out backtested data, last run {{ diversification.computed_at }} —
+    not a live figure.
+  </div>
+  {% else %}
+  <div class="mute">{{ diversification.reason }}</div>
+  {% endif %}
 </div>
 {% endblock %}
 

@@ -295,6 +295,31 @@ table.kv2 td:last-child { text-align:right; font-family:var(--data); }
 .scrub input[type=range] { flex:1; accent-color:var(--intel); }
 .scrub .mute { color:var(--mute); font-size:10.5px; }
 
+/* The Promotion Moment (docs/15 V5 M29): a distinct, longer-lived
+   celebration banner -- not a generic .toast (this is the product's most
+   meaningful event, per the plan's own "earned and memorable" gate). The
+   honesty label + real DSR/PBO numbers are inline in the copy, never a
+   separate small-print afterthought. */
+.promotion-banner {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-8px);
+  z-index: 210; background: var(--slab); border: 1px solid rgba(240,166,42,.55);
+  border-left: 3px solid var(--amber); border-radius: 6px; padding: 12px 18px;
+  font-size: 13px; color: var(--ink); box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  opacity: 0; transition: opacity .3s ease-out, transform .3s ease-out;
+  max-width: min(520px, 90vw);
+}
+.promotion-banner.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.promotion-banner b { color: var(--amber); }
+.promotion-banner .tag { margin-right: 8px; }
+
+/* Diversification panel (docs/15 V5 M29): the offline-report snapshot,
+   dated -- reuses .hero-kpi (hero number) + .section-h (section) +
+   table.kv2 (detail) rather than inventing a parallel hierarchy. */
+.diversification-panel { background:var(--slab); border:1px solid var(--ridge);
+  border-radius:6px; padding:14px; margin-top:12px; }
+.diversification-panel .hero-kpi { margin-bottom:6px; }
+.diversification-panel .stale-note { color:var(--mute); font-size:10.5px; margin-top:6px; }
+
 /* Engine Room conversation (Intel view, docs/13 M21) */
 .convo-scrub { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
 .convo-scrub input[type=range] { flex:1; accent-color:var(--intel); }

@@ -308,6 +308,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--kill-switch", default=None, help="Path to the persistent kill-switch file."
     )
     desk_parser.add_argument("--port", type=int, default=8137)
+    desk_parser.add_argument(
+        "--diversification", default="runs/diversification_score.json",
+        help="Path to scripts/diversification_report.py's JSON artifact (docs/15 V5 M29). "
+        "Shown dated on the Engine view if present; an honest empty state otherwise.",
+    )
     desk_parser.set_defaults(func=_cmd_desk)
 
     doctor_parser = subparsers.add_parser(
@@ -381,6 +386,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persist the trading audit log here (docs/12 M15). Passing the same path again "
         "on a later run auto-resumes the fleet's positions/cash/orders from it instead of "
         "starting flat; a new or omitted path always starts flat.",
+    )
+    live_parser.add_argument(
+        "--diversification", default="runs/diversification_score.json",
+        help="Path to scripts/diversification_report.py's JSON artifact (docs/15 V5 M29). "
+        "Shown dated on the Engine view if present; an honest empty state otherwise.",
     )
     live_parser.set_defaults(func=_cmd_live)
 
@@ -585,6 +595,7 @@ def _cmd_live(args: argparse.Namespace) -> int:
             autonomy_every=args.autonomy_every, n_trials=args.n_trials,
             min_periods=args.min_periods, use_llm=args.llm, llm_model=args.llm_model,
             out_path=Path(args.out) if args.out else None,
+            diversification_path=Path(args.diversification) if args.diversification else None,
         ),
     )
 
@@ -677,6 +688,7 @@ def _cmd_desk(args: argparse.Namespace) -> int:
         control=ControlPlane(kill_switch=kill_switch),
         audit_path=Path(args.audit) if args.audit else None,
         symbol=args.symbol,
+        diversification_path=Path(args.diversification) if args.diversification else None,
     )
     print(f"Obsidian Desk on http://{BIND_HOST}:{args.port} (paper-only, localhost)")
     serve(data, port=args.port)

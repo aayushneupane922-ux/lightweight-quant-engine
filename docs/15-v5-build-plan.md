@@ -74,11 +74,11 @@ All in `src/lqe/ui/theme/desk.css` unless noted. These are the audit's concrete 
 - **Tests:** each dormant adapter produces real, gated signals across the universe; diversification score now has cross-instrument return streams to measure. Done — see `HANDOFF.md` §1l.
 - **Gate:** the previously-dormant intelligence is alive and honestly gated. `tag m28-done`.
 
-### M29 · Universe UI + ⭐ The Promotion Moment (signature)  · M · Opus · Dep: M28
+### M29 · Universe UI + ⭐ The Promotion Moment (signature)  · M · Opus · Dep: M28 — DONE, tag `m29-done`
 *The signature moment lands here — gate + universe are both live.*
-- [ ] Neural web spans the universe; diversification score shown across instruments; **3-tier visual hierarchy + whitespace pass** (audit §5 — the added density needs it: hero number / section / detail).
-- [ ] **The Promotion Moment:** when a candidate passes the gate, animate it **crossing from the dim sandbox into the bright validated core** (shared-element on the neural web), a gold ring pulse, a line "Validated out-of-sample — promoted to the tracked book (DSR x.x, PBO x.x)", optional tone. Honest label inline. Spring easing; reduced-motion → instant state.
-- **Tests:** promotion animation fires only on a real gate PASS; carries the honesty label; reduced-motion safe; still read-only.
+- [x] Neural web spans the universe; diversification score shown across instruments; **3-tier visual hierarchy + whitespace pass** (audit §5 — the added density needs it: hero number / section / detail). Neural-web nodes reshaped to per-(model, symbol), capped to the docs/11 §11.11 node budget with honest "+N idle" overflow markers. Diversification score shown for the first time ever, via a dated offline-report panel (reuses `.hero-kpi`/`.section-h`/`table.kv2` for hero/section/detail — no new hierarchy invented).
+- [x] **The Promotion Moment:** when a candidate passes the gate, animate it **crossing from the dim sandbox into the bright validated core** (shared-element on the neural web), a gold ring pulse, a line "Validated out-of-sample — promoted to the tracked book (DSR x.x, PBO x.x)", optional tone. Honest label inline. Spring easing; reduced-motion → instant state. Found and fixed a real prerequisite gap first: the neural web had no live-refresh mechanism at all — now rides the existing shared `/ws` push via a new `recent_promotions()` feed.
+- **Tests:** promotion animation fires only on a real gate PASS; carries the honesty label; reduced-motion safe; still read-only. Done — see `HANDOFF.md` §1m.
 - **Gate:** the product's most meaningful event is *earned and memorable*. `tag m29-done`.
 
 ### M30 · Perps & Carry  · M · Dep: M27

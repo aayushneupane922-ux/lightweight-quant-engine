@@ -7,6 +7,7 @@ imports no risk/execution internals.
 from __future__ import annotations
 
 import ast
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -98,3 +99,110 @@ def test_viz3d_package_imports_no_risk_execution_or_autonomy() -> None:
             elif isinstance(node, ast.Import):
                 mod = node.names[0].name
             assert not mod.startswith(("lqe.risk", "lqe.execution", "lqe.autonomy")), mod
+
+
+# -- docs/15 V5 M29: the diversification panel (dated offline report) ------
+
+
+def test_engine_view_shows_an_honest_empty_state_when_not_yet_computed() -> None:
+    html = _client_with_audit().get("/engine").text
+    assert "Not yet computed" in html
+    assert "diversification_report.py" in html
+
+
+def test_engine_view_shows_the_dated_diversification_panel_when_present(tmp_path: Path) -> None:
+    artifact = tmp_path / "diversification_score.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "computed_at": "2026-07-04T12:00:00+00:00",
+                "n_bars": 2000,
+                "universe": ["BTC-USDT"],
+                "n_models": 42,
+                "average_pairwise_correlation": 0.257,
+                "effective_number_of_bets": 6.5,
+                "n_sleeves": 9,
+                "dominant_sleeve": "trend_momentum",
+                "max_sleeve_share": 0.31,
+            }
+        )
+    )
+    data = DeskData(
+        state_reader=StateReader([]), control=ControlPlane(), diversification_path=artifact,
+    )
+    html = TestClient(create_app(data)).get("/engine").text
+    assert "6.50" in html  # effective_number_of_bets
+    assert "0.257" in html  # average_pairwise_correlation
+    assert "trend_momentum" in html
+    assert "2026-07-04T12:00:00+00:00" in html
+    assert "computed offline" in html
+
+
+def test_api_diversification_route_mirrors_the_desk_payload(tmp_path: Path) -> None:
+    artifact = tmp_path / "diversification_score.json"
+    artifact.write_text(
+        json.dumps(
+            {
+                "computed_at": "2026-07-04T12:00:00+00:00",
+                "n_bars": 2000, "universe": ["BTC-USDT"],
+                "n_models": 42, "average_pairwise_correlation": 0.257,
+                "effective_number_of_bets": 6.5, "n_sleeves": 9,
+                "dominant_sleeve": "trend_momentum", "max_sleeve_share": 0.31,
+            }
+        )
+    )
+    data = DeskData(
+        state_reader=StateReader([]), control=ControlPlane(), diversification_path=artifact,
+    )
+    body = TestClient(create_app(data)).get("/api/diversification").json()
+    assert body["computed"] is True
+    assert body["n_models"] == 42
+    assert body["dominant_sleeve"] == "trend_momentum"
+
+
+def test_diversification_is_an_honest_empty_state_when_the_path_is_missing(tmp_path: Path) -> None:
+    data = DeskData(
+        state_reader=StateReader([]), control=ControlPlane(),
+        diversification_path=tmp_path / "does-not-exist.json",
+    )
+    payload = data.diversification()
+    assert payload.computed is False
+    assert "Not yet computed" in payload.reason
+
+
+def test_diversification_empty_state_when_the_file_is_malformed(tmp_path: Path) -> None:
+    artifact = tmp_path / "bad.json"
+    artifact.write_text("{not valid json")
+    data = DeskData(
+        state_reader=StateReader([]), control=ControlPlane(), diversification_path=artifact,
+    )
+    payload = data.diversification()
+    assert payload.computed is False
+    assert "unreadable or malformed" in payload.reason
+
+
+def test_diversification_refreshes_when_the_artifact_is_rewritten(tmp_path: Path) -> None:
+    artifact = tmp_path / "diversification_score.json"
+    artifact.write_text(json.dumps({
+        "computed_at": "t1", "n_models": 10, "average_pairwise_correlation": 0.5,
+        "effective_number_of_bets": 2.0, "n_sleeves": 3,
+        "dominant_sleeve": "a", "max_sleeve_share": 0.5,
+    }))
+    data = DeskData(
+        state_reader=StateReader([]), control=ControlPlane(), diversification_path=artifact,
+    )
+    first = data.diversification()
+    assert first.n_models == 10
+    # a re-run of the script overwrites the file with new numbers -- the
+    # mtime-checked cache must pick this up without restarting the desk.
+    import os
+    import time
+    time.sleep(0.01)
+    artifact.write_text(json.dumps({
+        "computed_at": "t2", "n_models": 99, "average_pairwise_correlation": 0.1,
+        "effective_number_of_bets": 8.0, "n_sleeves": 5,
+        "dominant_sleeve": "b", "max_sleeve_share": 0.2,
+    }))
+    os.utime(artifact, None)
+    second = data.diversification()
+    assert second.n_models == 99

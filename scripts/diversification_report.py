@@ -46,12 +46,18 @@ per non-negotiable #9):
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import numpy as np
 
-from lqe.analytics.diversification import cross_group_average_correlation, diversification_score
+from lqe.analytics.diversification import (
+    DiversificationScore,
+    cross_group_average_correlation,
+    diversification_score,
+)
 from lqe.backtest.runner import run_backtest
 from lqe.backtest.universe_runner import run_universe_backtest
 from lqe.core.events import MarketEvent
@@ -65,6 +71,13 @@ UNIVERSE = DEFAULT_UNIVERSE
 START = datetime(2026, 1, 1, tzinfo=UTC)
 N_BARS = 2000
 SEED = 42
+
+# docs/15 V5 M29: where the desk's Engine-view diversification panel reads
+# this measurement from (a plain disk read, not the engine hot path --
+# `lqe desk`/`lqe live`'s own `--diversification` flag default matches this
+# path). Shown dated, not live-recomputed -- see ui/data.py's
+# `DiversificationPayload` docstring for why.
+ARTIFACT_PATH = Path("runs/diversification_score.json")
 
 # docs/14 M24's exit gate ("measurably low-correlation to directional
 # sleeves"): every sleeve whose bet is on an instrument's own price
@@ -120,6 +133,29 @@ def _bar_returns(equity_curve: list[Decimal]) -> list[float]:
     for prev, cur in zip(equity_curve, equity_curve[1:]):  # noqa: B905 - deliberately uneven
         returns.append(float((cur - prev) / prev) if prev != 0 else 0.0)
     return returns
+
+
+def _write_artifact(score: DiversificationScore, path: Path) -> None:
+    """docs/15 V5 M29: writes the exact JSON `ui/data.py::DeskData.diversification()`
+    reads. Factored out of `main()` so its serialization can be unit-tested
+    without re-running the full (multi-minute) catalog sweep."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "computed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                "n_bars": N_BARS,
+                "universe": list(UNIVERSE),
+                "n_models": score.n_models,
+                "average_pairwise_correlation": score.average_pairwise_correlation,
+                "effective_number_of_bets": score.effective_number_of_bets,
+                "n_sleeves": score.n_sleeves,
+                "dominant_sleeve": score.dominant_sleeve,
+                "max_sleeve_share": score.max_sleeve_share,
+            },
+            indent=2,
+        )
+    )
 
 
 def main() -> int:
@@ -216,6 +252,9 @@ def main() -> int:
         "This is the full unproven catalog on synthetic backtested data -- a diagnostic "
         "measurement, not a claim about the (currently empty) tracked/promoted book."
     )
+
+    _write_artifact(score, ARTIFACT_PATH)
+    print(f"wrote {ARTIFACT_PATH}")
 
     if "carry_basis" in sleeve_by_model.values():
         directional_present = DIRECTIONAL_SLEEVES & set(sleeve_by_model.values())

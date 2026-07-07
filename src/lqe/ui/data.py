@@ -12,6 +12,7 @@ and `simulated` is always true on the snapshot.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -24,6 +25,7 @@ from lqe.storage.state_reader import (
     EquityPoint,
     GraphPayload,
     PriceBar,
+    PromotionRow,
     ReconciliationRow,
     StateReader,
     TapeRow,
@@ -91,6 +93,28 @@ class DailyRow(BaseModel):
     reconciled: bool
 
 
+class DiversificationPayload(BaseModel):
+    """docs/15 V5 M29: the offline diversification measurement
+    (`scripts/diversification_report.py`), shown dated -- NOT live-
+    recomputed. A genuine diversification score needs bar-aligned, equal-
+    length return streams per model; the live audit log only ever gives
+    per-fill samples (ragged, unaligned across models), so this reads the
+    script's own last-run JSON artifact instead of faking a live figure.
+    `computed` is False with an honest reason when no artifact exists yet
+    (mirrors `blotter_empty_state_reason`'s empty-state convention)."""
+
+    model_config = _FROZEN
+    computed: bool
+    reason: str = ""
+    computed_at: str | None = None
+    n_models: int | None = None
+    average_pairwise_correlation: float | None = None
+    effective_number_of_bets: float | None = None
+    n_sleeves: int | None = None
+    dominant_sleeve: str | None = None
+    max_sleeve_share: float | None = None
+
+
 class DeskData:
     """Bundles the read side (`StateReader`) and the reference rows the
     non-live views need. The write side is `control` — the *only* mutating
@@ -105,6 +129,7 @@ class DeskData:
         experiment_rows: list[ExperimentRow] | None = None,
         daily_rows: list[DailyRow] | None = None,
         jobs: JobManager | None = None,
+        diversification_path: Path | None = None,
     ) -> None:
         self._state_reader = state_reader
         self._control = control
@@ -122,6 +147,12 @@ class DeskData:
         # id()) prevents a stale hit if an old reader is garbage-collected
         # and a new one reuses its address.
         self._ws_frame_cache: tuple[StateReader, str] | None = None
+        # docs/15 V5 M29: the diversification JSON artifact's path (a plain
+        # disk read, not the engine hot path -- trivially "performance-
+        # intact"), mtime-cached so a re-run of the script while the desk is
+        # open is picked up without restarting it.
+        self._diversification_path = diversification_path
+        self._diversification_cache: tuple[float, DiversificationPayload] | None = None
 
     def set_catalog_rows(self, catalog_rows: list[CatalogRow]) -> None:
         """Swap the Catalog view's rows (docs/13 M18: a GUI-started live
@@ -164,11 +195,17 @@ class DeskData:
     def blotter(self, *, after_seq: int = 0, limit: int = 500) -> list[BlotterRow]:
         return self._state_reader.blotter(after_seq=after_seq, limit=limit)
 
+    def recent_promotions(self, *, after_seq: int = 0, limit: int = 20) -> list[PromotionRow]:
+        return self._state_reader.recent_promotions(after_seq=after_seq, limit=limit)
+
     def ws_frame_text(self) -> str:
         """The serialized WebSocket push frame (snapshot + tape + blotter +
-        the reader's max seq, so the client can skip repaints when nothing
-        changed). Cached per StateReader instance -- every ping between live
-        polls reuses the same string."""
+        promotions + the reader's max seq, so the client can skip repaints
+        when nothing changed). Cached per StateReader instance -- every ping
+        between live polls reuses the same string. `promotions` (docs/15 V5
+        M29) is what makes the Engine view's Promotion Moment animation
+        live-observable -- without it, `/engine` never refreshed at all
+        between page loads/scrubber drags."""
         reader = self._state_reader
         cached = self._ws_frame_cache
         if cached is not None and cached[0] is reader:
@@ -178,10 +215,44 @@ class DeskData:
             "snapshot": reader.snapshot().model_dump(mode="json"),
             "tape": [r.model_dump(mode="json") for r in reader.tape(limit=60)],
             "blotter": [r.model_dump(mode="json") for r in reader.blotter(limit=60)],
+            "promotions": [r.model_dump(mode="json") for r in reader.recent_promotions(limit=20)],
         }
         text = json.dumps(frame, default=str)
         self._ws_frame_cache = (reader, text)
         return text
+
+    def diversification(self) -> DiversificationPayload:
+        path = self._diversification_path
+        if path is None or not path.exists():
+            return DiversificationPayload(
+                computed=False,
+                reason="Not yet computed -- run `python scripts/diversification_report.py`.",
+            )
+        try:
+            mtime = path.stat().st_mtime
+            cached = self._diversification_cache
+            if cached is not None and cached[0] == mtime:
+                return cached[1]
+            raw = json.loads(path.read_text())
+            payload = DiversificationPayload(
+                computed=True,
+                computed_at=str(raw.get("computed_at", "")),
+                n_models=int(raw["n_models"]),
+                average_pairwise_correlation=float(raw["average_pairwise_correlation"]),
+                effective_number_of_bets=float(raw["effective_number_of_bets"]),
+                n_sleeves=int(raw["n_sleeves"]),
+                dominant_sleeve=str(raw["dominant_sleeve"]),
+                max_sleeve_share=float(raw["max_sleeve_share"]),
+            )
+        except (OSError, ValueError, KeyError):
+            payload = DiversificationPayload(
+                computed=False,
+                reason="The diversification artifact exists but is unreadable or malformed "
+                "-- re-run `python scripts/diversification_report.py`.",
+            )
+            mtime = -1.0
+        self._diversification_cache = (mtime, payload)
+        return payload
 
     def reconciliation(self) -> list[ReconciliationRow]:
         return self._state_reader.reconciliation()

@@ -175,6 +175,25 @@ class ReconciliationRow(BaseModel):
     n_trades: int
 
 
+class PromotionRow(BaseModel):
+    """One promotion crossing the gate (docs/15 V5 M29 "The Promotion
+    Moment"): the resolved `(model_id, symbol)` node it concerns (via the
+    same three-tier fallback `graph()` uses), paired with its own
+    `ValidationEvent`'s `dsr`/`pbo` (same `candidate_id`, no event-schema
+    change) so the desk can render the exact honest line docs/15 asks
+    for: "Validated out-of-sample — promoted to the tracked book
+    (DSR x.x, PBO x.x)"."""
+
+    model_config = _FROZEN
+    seq: int
+    sim_ts: datetime
+    model_id: str
+    symbol: Symbol | Literal["—"]
+    dsr: float
+    pbo: float
+    config_version: str
+
+
 class TapeRow(BaseModel):
     """One designed row per audit event (docs/05 §5.3) — structured, never
     a console line."""
@@ -242,8 +261,13 @@ class ConversationPayload(BaseModel):
     messages: list[ConversationMessage]
 
 
-NodeKind = Literal["tracked", "sandbox", "meta", "regime"]
+NodeKind = Literal["tracked", "sandbox", "meta", "regime", "overflow"]
 LinkKind = Literal["corr+", "corr-", "dataflow", "attention", "promotion"]
+# docs/11 §11.11: "3D view >= 30 fps at <= ~150 nodes (instanced)" -- a
+# pre-existing non-functional target, not a new limit invented for V5 M29.
+# M28's Floor already has 454 (model, symbol) cells at full catalog scale,
+# well over this budget for a force-directed canvas.
+MAX_GRAPH_NODES = 150
 
 
 class GraphNode(BaseModel):
@@ -255,6 +279,10 @@ class GraphNode(BaseModel):
     id: str
     label: str
     family: str
+    # V5 M29 "Universe UI": the real neural-web unit is (model, symbol), same
+    # reshape the Floor got in M28 -- "—" for structural nodes (feed/meta)
+    # and per-symbol overflow markers, which aren't tied to one instrument.
+    symbol: Symbol | Literal["—"]
     kind: NodeKind
     state: ModelState
     conviction: float  # 0..1, a display heuristic (attention/evidence), never P&L
@@ -587,20 +615,23 @@ class StateReader:
         else:
             records = [r for r in self._records if r.seq <= effective]
             recon = _Reconstruction(records, self._catalog)
-        # V5 M28: `model_cells()` now yields one cell per (model, symbol) --
-        # a model_id trading more than one instrument has more than one
-        # cell. The neural-web graph (unlike the Floor) has no per-
-        # instrument node concept yet (autonomy events like
-        # `HypothesisEvent`/`PromotionEvent` only ever name a bare
-        # model_id, no symbol) -- reshaping graph() into "models x
-        # instruments" nodes is explicitly M29's job ("Universe UI"), not
-        # this one's. Until then, keep the most-active (highest n_trades)
-        # cell per model_id rather than an arbitrary dict-collision pick.
-        cells: dict[str, ModelCell] = {}
-        for c in recon.model_cells():
-            existing = cells.get(c.model_id)
-            if existing is None or c.n_trades > existing.n_trades:
-                cells[c.model_id] = c
+        # V5 M29 "Universe UI": the real neural-web unit is (model, symbol),
+        # same reshape the Floor got in M28. Autonomy events
+        # (`HypothesisEvent`/`PromotionEvent`/`DeRiskEvent`) only ever name a
+        # bare model_id -- resolved to one specific node via the same
+        # three-tier precedent `model_cells()` already uses for idle catalog
+        # entries (stamped symbol -> sole observed symbol -> "—"), extended
+        # with one more tier: if the model_id has traded on more than one
+        # symbol, pick the one with the highest n_trades. The Orchestrator is
+        # still single-symbol (docs/15 M29 explicitly doesn't extend it --
+        # see HANDOFF §1m), so this is very unlikely to ever be truly
+        # ambiguous in practice, but the fallback is honest either way.
+        cells = recon.model_cells()
+        cells_by_model: dict[str, list[ModelCell]] = defaultdict(list)
+        cell_by_key: dict[tuple[str, Symbol | Literal["—"]], ModelCell] = {}
+        for c in cells:
+            cells_by_model[c.model_id].append(c)
+            cell_by_key[(c.model_id, c.symbol)] = c
 
         promoted: set[str] = set()
         de_risked: set[str] = set()
@@ -624,20 +655,26 @@ class StateReader:
             elif t == "LlmCallEvent":
                 meta_present = True
 
-        # Model identity comes from both surfaces: trading audits give live
-        # cells (state/return/trades); an autopilot audit only names models
-        # in its autonomy events. Union them so the graph works for either.
-        all_ids = sorted(set(cells) | explored | promoted | de_risked)
+        sole_symbol = recon._sole_observed_symbol()
+        bare_model_ids = explored | promoted | de_risked
+        resolved_symbol_for = {
+            mid: _resolve_symbol_for_model(mid, cells_by_model, sole_symbol)
+            for mid in bare_model_ids
+        }
 
-        nodes: list[GraphNode] = []
-        links: list[GraphLink] = []
-        tracked_ids: list[str] = []
-        sandbox_ids: list[str] = []
+        all_keys: set[tuple[str, Symbol | Literal["—"]]] = set(cell_by_key)
+        for model_id, symbol in resolved_symbol_for.items():
+            if model_id not in cells_by_model:
+                all_keys.add((model_id, symbol))
 
-        for model_id in all_ids:
-            is_tracked = model_id in promoted
-            (tracked_ids if is_tracked else sandbox_ids).append(model_id)
-            cell = cells.get(model_id)
+        def _is_resolved(model_id: str, symbol: Symbol | Literal["—"], group: set[str]) -> bool:
+            return model_id in group and resolved_symbol_for.get(model_id, symbol) == symbol
+
+        def _node_for(model_id: str, symbol: Symbol | Literal["—"]) -> GraphNode:
+            is_tracked = _is_resolved(model_id, symbol, promoted)
+            is_de_risked = _is_resolved(model_id, symbol, de_risked)
+            is_explored = _is_resolved(model_id, symbol, explored)
+            cell = cell_by_key.get((model_id, symbol))
             if cell is not None:
                 state = cell.state
                 sim_return = cell.sim_return_pct if cell.sim_return_pct is not None else 0.0
@@ -645,42 +682,93 @@ class StateReader:
                 family = cell.family
                 status: ModelStatus = "validated" if is_tracked else cell.status
             else:
-                state = "HALTED" if model_id in de_risked else ("FIRED" if is_tracked else "ARMED")
+                state = "HALTED" if is_de_risked else ("FIRED" if is_tracked else "ARMED")
                 sim_return, n_trades, family = 0.0, 0, "—"
                 status = "validated" if is_tracked else "unproven"
-            activity = n_trades or (1 if model_id in explored else 0)
+            activity = n_trades or (1 if is_explored else 0)
+            label = model_id if symbol == "—" else f"{model_id} · {symbol}"
+            return GraphNode(
+                id=f"{model_id}::{symbol}", label=label, family=family, symbol=symbol,
+                kind="tracked" if is_tracked else "sandbox", state=state,
+                conviction=_conviction(is_tracked, activity),
+                sim_return=sim_return, n_trades=n_trades, status=status,
+            )
+
+        all_nodes = {key: _node_for(*key) for key in all_keys}
+
+        # docs/11 §11.11: "3D view >= 30 fps at <= ~150 nodes" -- a promoted/
+        # explored/de-risked node is NEVER dropped (the signature moment must
+        # always render); everything else fills the remaining budget by
+        # conviction, and whatever doesn't fit collapses into one honestly-
+        # labeled "+N idle" overflow marker per symbol (a count, never
+        # invented state/return data).
+        always_keep = {
+            key for key, mid in ((k, k[0]) for k in all_keys)
+            if mid in promoted or mid in explored or mid in de_risked
+        }
+        model_budget = max(0, MAX_GRAPH_NODES - 10 - len(always_keep))
+        remaining = sorted(
+            all_keys - always_keep,
+            key=lambda k: (-all_nodes[k].conviction, -all_nodes[k].n_trades, k[0], k[1]),
+        )
+        kept_keys = always_keep | set(remaining[:model_budget])
+        dropped_keys = set(remaining[model_budget:])
+
+        overflow_counts: dict[str, int] = defaultdict(int)
+        for _model_id, symbol in dropped_keys:
+            overflow_counts[str(symbol)] += 1
+
+        nodes: list[GraphNode] = [all_nodes[key] for key in sorted(kept_keys)]
+        links: list[GraphLink] = []
+        tracked_ids: list[str] = []
+        sandbox_ids: list[str] = []
+        for key in sorted(kept_keys):
+            node = all_nodes[key]
+            (tracked_ids if node.kind == "tracked" else sandbox_ids).append(node.id)
+        for symbol, count in sorted(overflow_counts.items()):
+            if count <= 0:
+                continue
+            overflow_id = f"overflow::{symbol}"
             nodes.append(
                 GraphNode(
-                    id=model_id, label=model_id, family=family,
-                    kind="tracked" if is_tracked else "sandbox", state=state,
-                    conviction=_conviction(is_tracked, activity),
-                    sim_return=sim_return, n_trades=n_trades, status=status,
+                    id=overflow_id, label=f"+{count} idle", family="—", symbol=symbol,
+                    kind="overflow", state="ARMED", conviction=0.05,
+                    sim_return=0.0, n_trades=0, status="unproven",
                 )
             )
+            sandbox_ids.append(overflow_id)
 
         node_ids = {n.id for n in nodes}
         if nodes:
             nodes.append(_structural_node("feed", "Market feed", "regime"))
-            for model_id in all_ids:
+            for key in sorted(kept_keys):
                 links.append(
-                    GraphLink(source="feed", target=model_id, kind="dataflow", weight=0.4)
+                    GraphLink(source="feed", target=all_nodes[key].id, kind="dataflow", weight=0.4)
                 )
 
         if meta_present:
             nodes.append(_structural_node("meta", "Meta-layer", "meta"))
             max_att = max(attention.values(), default=1)
             for model_id, count in attention.items():
-                if model_id in node_ids:
+                att_symbol = resolved_symbol_for.get(model_id)
+                if att_symbol is None:
+                    continue
+                node_id = f"{model_id}::{att_symbol}"
+                if node_id in node_ids:
                     links.append(
                         GraphLink(
-                            source="meta", target=model_id, kind="attention",
+                            source="meta", target=node_id, kind="attention",
                             weight=round(count / max_att, 3),
                         )
                     )
             for model_id in sorted(promoted):
-                if model_id in node_ids:
+                promo_symbol = resolved_symbol_for.get(model_id)
+                if promo_symbol is None:
+                    continue
+                node_id = f"{model_id}::{promo_symbol}"
+                if node_id in node_ids:
                     links.append(
-                        GraphLink(source="meta", target=model_id, kind="promotion", weight=1.0)
+                        GraphLink(source="meta", target=node_id, kind="promotion", weight=1.0)
                     )
 
         return GraphPayload(
@@ -691,6 +779,46 @@ class StateReader:
             links=links,
             regions={"tracked": tracked_ids, "sandbox": sandbox_ids},
         )
+
+    def recent_promotions(self, *, after_seq: int = 0, limit: int = 20) -> list[PromotionRow]:
+        """Every `PromotionEvent` after `after_seq`, resolved to the specific
+        (model, symbol) node it concerns (docs/15 V5 M29, same fallback
+        `graph()` uses) and paired with its own `ValidationEvent`'s
+        dsr/pbo (same `candidate_id`, no event-schema change) -- the live
+        feed the desk's shared `/ws` push uses to trigger the Promotion
+        Moment animation. Same `after_seq`/seq-ordered idiom as
+        `tape()`/`blotter()`, so the client only ever reacts to genuinely
+        new promotions, never re-firing on a repeated poll."""
+        recon = self._reconstruction()
+        cells_by_model: dict[str, list[ModelCell]] = defaultdict(list)
+        for c in recon.model_cells():
+            cells_by_model[c.model_id].append(c)
+        sole_symbol = recon._sole_observed_symbol()
+
+        validation_by_candidate: dict[str, tuple[float, float]] = {}
+        rows: list[PromotionRow] = []
+        for env in self._records:
+            if env.type == "ValidationEvent":
+                p = env.payload
+                cid = str(p.get("candidate_id", ""))
+                validation_by_candidate[cid] = (
+                    float(str(p.get("dsr", "nan"))), float(str(p.get("pbo", "nan")))
+                )
+            elif env.type == "PromotionEvent" and env.seq > after_seq:
+                p = env.payload
+                candidate_id = str(p.get("candidate_id", ""))
+                model_id = _model_from_candidate(candidate_id)
+                if not model_id:
+                    continue
+                dsr, pbo = validation_by_candidate.get(candidate_id, (float("nan"), float("nan")))
+                symbol = _resolve_symbol_for_model(model_id, cells_by_model, sole_symbol)
+                rows.append(
+                    PromotionRow(
+                        seq=env.seq, sim_ts=env.sim_ts, model_id=model_id, symbol=symbol,
+                        dsr=dsr, pbo=pbo, config_version=str(p.get("config_version", "")),
+                    )
+                )
+        return rows[-limit:] if limit > 0 else rows
 
 
 # --- chart/graph helpers ----------------------------------------------------
@@ -750,9 +878,28 @@ def _conviction(is_tracked: bool, n_trades: int) -> float:
 
 def _structural_node(node_id: str, label: str, kind: NodeKind) -> GraphNode:
     return GraphNode(
-        id=node_id, label=label, family="—", kind=kind, state="ARMED",
+        id=node_id, label=label, family="—", symbol="—", kind=kind, state="ARMED",
         conviction=0.5, sim_return=0.0, n_trades=0, status="unproven",
     )
+
+
+def _resolve_symbol_for_model(
+    model_id: str,
+    cells_by_model: dict[str, list[ModelCell]],
+    sole_observed_symbol: Symbol | None,
+) -> Symbol | Literal["—"]:
+    """Autonomy events (`HypothesisEvent`/`PromotionEvent`/`DeRiskEvent`,
+    docs/15 V5 M29) only ever name a bare model_id -- resolve it to the one
+    (model, symbol) node it actually concerns, via the same precedent
+    `model_cells()` established for idle catalog entries in M28: the symbol
+    it actually traded on (highest n_trades if it traded more than one --
+    the Orchestrator is still single-symbol, so this is very unlikely to
+    ever be truly ambiguous in practice), else this reconstruction's own
+    sole observed symbol, else the honest "—" placeholder."""
+    candidates = cells_by_model.get(model_id)
+    if candidates:
+        return max(candidates, key=lambda c: c.n_trades).symbol
+    return sole_observed_symbol or "—"
 
 
 def _model_from_candidate(candidate_id: str) -> str:

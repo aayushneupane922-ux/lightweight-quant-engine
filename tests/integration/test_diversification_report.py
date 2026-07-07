@@ -10,16 +10,37 @@ the default test run, same pattern as `make_demo_run.py`).
 
 from __future__ import annotations
 
+import importlib.util
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import numpy as np
+import pytest
 
-from lqe.analytics.diversification import cross_group_average_correlation, diversification_score
+from lqe.analytics.diversification import (
+    DiversificationScore,
+    cross_group_average_correlation,
+    diversification_score,
+)
 from lqe.backtest.runner import run_backtest
 from lqe.core.events import MarketEvent
 from lqe.core.types import Symbol
 from lqe.models.catalog_scale import build_scaled_catalog
+
+# `scripts/` isn't an installed package -- load `_write_artifact` (docs/15
+# V5 M29) directly by file path rather than sys.path-hacking it in, so this
+# test can pin the exact JSON schema `ui/data.py::DeskData.diversification()`
+# reads without re-running the full (multi-minute) catalog sweep in `main()`.
+_spec = importlib.util.spec_from_file_location(
+    "diversification_report",
+    Path(__file__).resolve().parents[2] / "scripts" / "diversification_report.py",
+)
+assert _spec is not None and _spec.loader is not None
+_diversification_report = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_diversification_report)
+_write_artifact = _diversification_report._write_artifact
 
 SYMBOL: Symbol = "BTC-USDT"
 PERP_SYMBOL: Symbol = "BTC-USDT-PERP"
@@ -104,3 +125,31 @@ def test_diversification_score_computes_over_real_backtested_returns() -> None:
             returns_by_model, sleeve_by_model, {"carry_basis"}, directional_present,
         )
         assert -1.0 <= cross_corr <= 1.0
+
+
+def test_write_artifact_produces_the_exact_json_the_desk_panel_reads(tmp_path: Path) -> None:
+    # docs/15 V5 M29: pins `_write_artifact`'s schema against
+    # `ui/data.py::DeskData.diversification()`'s own parsing (int()/float()/
+    # str() on these exact keys) without re-running the full catalog sweep.
+    score = DiversificationScore(
+        n_models=42, average_pairwise_correlation=0.257, effective_number_of_bets=6.5,
+        n_sleeves=9, dominant_sleeve="trend_momentum", max_sleeve_share=0.31,
+    )
+    path = tmp_path / "diversification_score.json"
+    _write_artifact(score, path)
+
+    raw = json.loads(path.read_text())
+    assert raw["n_models"] == 42
+    assert raw["average_pairwise_correlation"] == pytest.approx(0.257)
+    assert raw["effective_number_of_bets"] == pytest.approx(6.5)
+    assert raw["n_sleeves"] == 9
+    assert raw["dominant_sleeve"] == "trend_momentum"
+    assert raw["max_sleeve_share"] == pytest.approx(0.31)
+    # a real, parseable ISO timestamp -- not a placeholder string
+    datetime.fromisoformat(raw["computed_at"])
+    assert isinstance(raw["universe"], list) and len(raw["universe"]) > 0
+
+    # the exact round-trip ui/data.py's DeskData.diversification() does
+    assert int(raw["n_models"]) == 42
+    assert float(raw["average_pairwise_correlation"]) == pytest.approx(0.257)
+    assert str(raw["dominant_sleeve"]) == "trend_momentum"

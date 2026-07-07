@@ -114,6 +114,7 @@ class LiveSessionConfig:
     use_llm: bool = False
     llm_model: str = "llama3.2:3b"
     out_path: Path | None = None
+    diversification_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -277,6 +278,7 @@ class LiveSession:
             self._desk_data = DeskData(
                 state_reader=self._rebuild_state_reader(), control=control,
                 catalog_rows=_catalog_rows(self.catalog),
+                diversification_path=self.config.diversification_path,
             )
         else:
             self._desk_data.set_state_reader(self._rebuild_state_reader())
